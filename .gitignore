@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+node_modules/
+.dev
+.claude/
+custom_components/sleep_tracker/frontend/dist/

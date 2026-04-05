@@ -1,0 +1,82 @@
+start_sleep:
+  name: Start sleep session
+  description: Begin tracking a sleep session for a user.
+  fields:
+    user_id:
+      name: User ID
+      description: The Home Assistant user ID to start tracking sleep for.
+      required: true
+      selector:
+        text:
+    source:
+      name: Source
+      description: What triggered this (e.g., "automation", "phone_sensor").
+      required: false
+      default: automation
+      selector:
+        text:
+
+stop_sleep:
+  name: Stop sleep session
+  description: End the active sleep session for a user.
+  fields:
+    user_id:
+      name: User ID
+      description: The Home Assistant user ID to stop tracking sleep for.
+      required: true
+      selector:
+        text:
+    source:
+      name: Source
+      description: What triggered this.
+      required: false
+      default: automation
+      selector:
+        text:
+
+pulse_awake:
+  name: Pulse awake
+  description: Record a momentary wakeup during sleep. Assumes the user was sleeping and just woke up briefly.
+  fields:
+    user_id:
+      name: User ID
+      description: The Home Assistant user ID.
+      required: true
+      selector:
+        text:
+    source:
+      name: Source
+      description: What detected the wakeup (e.g., "phone_sensor", "button").
+      required: false
+      default: automation
+      selector:
+        text:
+
+pulse_still_awake:
+  name: Pulse still awake
+  description: Confirm that the user is still awake since the last pulse. Extends the awake window.
+  fields:
+    user_id:
+      name: User ID
+      description: The Home Assistant user ID.
+      required: true
+      selector:
+        text:
+    source:
+      name: Source
+      description: What detected the continued wakefulness.
+      required: false
+      default: automation
+      selector:
+        text:
+
+export_session:
+  name: Export session
+  description: Export a completed sleep session to the configured REST endpoint.
+  fields:
+    session_id:
+      name: Session ID
+      description: The UUID of the session to export.
+      required: true
+      selector:
+        text:
