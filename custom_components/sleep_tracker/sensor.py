@@ -67,7 +67,7 @@ class _SleepTrackerSensorBase(SensorEntity):
     ) -> None:
         self._coordinator = coordinator
         self._user_id = user_id
-        self._unsub: (() -> None) | None = None
+        self._unsub: callable | None = None
 
         config = coordinator.store.get_user_config(user_id)
         self._display_name = config.display_name if config else user_id[:8]

@@ -79,8 +79,71 @@ export class SettingsView extends LitElement {
     this._dirty = true;
   }
 
+  @state() private _copied: string | null = null;
+
+  private _copy(text: string, label: string) {
+    navigator.clipboard.writeText(text).then(() => {
+      this._copied = label;
+      setTimeout(() => { this._copied = null; }, 2000);
+    });
+  }
+
+  private _phoneAutomationYaml(): string {
+    const uid = this.userState.config!.user_id;
+    return `alias: "Sleep Tracker - Phone awake pulse"
+description: "Send an awake pulse when phone screen turns on during sleep"
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.YOUR_PHONE_interactive
+    to: "on"
+    for:
+      seconds: 1
+conditions:
+  - condition: state
+    entity_id: binary_sensor.sleep_tracker_${this._slug}_sleeping
+    state: "on"
+actions:
+  - action: sleep_tracker.pulse_awake
+    data:
+      user_id: "${uid}"
+      source: phone_sensor`;
+  }
+
+  private _buttonAutomationYaml(): string {
+    const uid = this.userState.config!.user_id;
+    return `alias: "Sleep Tracker - Button awake pulse"
+description: "Send an awake pulse when bedside button is pressed during sleep"
+triggers:
+  - trigger: state
+    entity_id: YOUR_BUTTON_ENTITY
+    to: "on"
+conditions:
+  - condition: state
+    entity_id: binary_sensor.sleep_tracker_${this._slug}_sleeping
+    state: "on"
+actions:
+  - action: sleep_tracker.pulse_awake
+    data:
+      user_id: "${uid}"
+      source: button`;
+  }
+
+  private _serviceCallYaml(): string {
+    const uid = this.userState.config!.user_id;
+    return `action: sleep_tracker.pulse_awake
+data:
+  user_id: "${uid}"
+  source: automation`;
+  }
+
+  private get _slug(): string {
+    const name = this.userState.config?.display_name || "";
+    return name.toLowerCase().replace(/\s+/g, "_");
+  }
+
   render() {
     if (!this.userState?.config) return nothing;
+    const uid = this.userState.config.user_id;
 
     return html`
       <div class="container">
@@ -133,10 +196,116 @@ export class SettingsView extends LitElement {
 
         <ha-card class="info-card">
           <div class="card-header">Your User ID</div>
-          <p class="user-id-hint">
+          <p class="hint">
             Use this ID in automations to send pulses via services:
           </p>
-          <code class="user-id">${this.userState.config.user_id}</code>
+          <div class="code-block">
+            <code>${uid}</code>
+            <button
+              class="copy-btn"
+              @click=${() => this._copy(uid, "uid")}
+            >${this._copied === "uid" ? "Copied!" : "Copy"}</button>
+          </div>
+        </ha-card>
+
+        <ha-card class="info-card">
+          <div class="card-header">Automation Examples</div>
+
+          <div class="example">
+            <div class="example-header">
+              <div>
+                <div class="example-title">Service Call</div>
+                <p class="hint">Use in any automation action or Developer Tools:</p>
+              </div>
+              <button
+                class="copy-btn"
+                @click=${() => this._copy(this._serviceCallYaml(), "svc")}
+              >${this._copied === "svc" ? "Copied!" : "Copy"}</button>
+            </div>
+            <pre class="yaml">${this._serviceCallYaml()}</pre>
+          </div>
+
+          <hr class="divider" />
+
+          <div class="example">
+            <div class="example-header">
+              <div>
+                <div class="example-title">Phone Screen Pulse</div>
+                <p class="hint">Sends an awake pulse when your phone screen turns on during sleep.
+                  Replace <code>YOUR_PHONE_interactive</code> with your phone's interactive sensor.</p>
+              </div>
+              <button
+                class="copy-btn"
+                @click=${() => this._copy(this._phoneAutomationYaml(), "phone")}
+              >${this._copied === "phone" ? "Copied!" : "Copy"}</button>
+            </div>
+            <pre class="yaml">${this._phoneAutomationYaml()}</pre>
+          </div>
+
+          <hr class="divider" />
+
+          <div class="example">
+            <div class="example-header">
+              <div>
+                <div class="example-title">Bedside Button Pulse</div>
+                <p class="hint">Sends an awake pulse when a bedside button/switch is pressed during sleep.
+                  Replace <code>YOUR_BUTTON_ENTITY</code> with your button entity.</p>
+              </div>
+              <button
+                class="copy-btn"
+                @click=${() => this._copy(this._buttonAutomationYaml(), "btn")}
+              >${this._copied === "btn" ? "Copied!" : "Copy"}</button>
+            </div>
+            <pre class="yaml">${this._buttonAutomationYaml()}</pre>
+          </div>
+        </ha-card>
+
+        <ha-card class="info-card">
+          <div class="card-header">Available Services</div>
+          <div class="services-list">
+            <div class="service-item">
+              <code>sleep_tracker.start_sleep</code>
+              <span class="hint">Begin a sleep session</span>
+            </div>
+            <div class="service-item">
+              <code>sleep_tracker.stop_sleep</code>
+              <span class="hint">End the active sleep session</span>
+            </div>
+            <div class="service-item">
+              <code>sleep_tracker.pulse_awake</code>
+              <span class="hint">Record a momentary wakeup</span>
+            </div>
+            <div class="service-item">
+              <code>sleep_tracker.pulse_still_awake</code>
+              <span class="hint">Confirm still awake (extends awake window)</span>
+            </div>
+            <div class="service-item">
+              <code>sleep_tracker.export_session</code>
+              <span class="hint">Export a completed session to REST</span>
+            </div>
+          </div>
+        </ha-card>
+
+        <ha-card class="info-card">
+          <div class="card-header">Available Entities</div>
+          <div class="services-list">
+            <div class="service-item">
+              <code>binary_sensor.sleep_tracker_${this._slug}_sleeping</code>
+              <span class="hint">On when sleeping — use as condition in automations</span>
+            </div>
+            <div class="service-item">
+              <code>sensor.sleep_tracker_${this._slug}_last_awake</code>
+              <span class="hint">Timestamp of last awake pulse</span>
+            </div>
+            <div class="service-item">
+              <code>sensor.sleep_tracker_${this._slug}_sleep_duration</code>
+              <span class="hint">Total sleep minutes (last completed session)</span>
+            </div>
+            <div class="service-item">
+              <code>sensor.sleep_tracker_${this._slug}_awake_count</code>
+              <span class="hint">Number of awakenings</span>
+            </div>
+          </div>
         </ha-card>
       </div>
     `;
@@ -176,12 +345,24 @@ export class SettingsView extends LitElement {
       .info-card {
         margin-top: var(--ha-space-4, 16px);
       }
-      .user-id-hint {
+      .hint {
         font-size: var(--ha-font-size-s, 12px);
         color: var(--secondary-text-color);
         margin: 0 0 var(--ha-space-2, 8px);
       }
-      .user-id {
+      .hint code {
+        background: var(--secondary-background-color, #f5f5f5);
+        padding: 1px 4px;
+        border-radius: 3px;
+        font-size: var(--ha-font-size-s, 12px);
+      }
+      .code-block {
+        display: flex;
+        align-items: center;
+        gap: var(--ha-space-2, 8px);
+      }
+      .code-block code {
+        flex: 1;
         display: block;
         padding: var(--ha-space-2, 8px) var(--ha-space-3, 12px);
         background: var(--secondary-background-color, #f5f5f5);
@@ -189,6 +370,68 @@ export class SettingsView extends LitElement {
         font-size: var(--ha-font-size-m, 14px);
         word-break: break-all;
         user-select: all;
+      }
+      .copy-btn {
+        padding: var(--ha-space-1, 4px) var(--ha-space-3, 12px);
+        background: var(--card-background-color, white);
+        border: 1px solid var(--divider-color, #e0e0e0);
+        border-radius: var(--ha-border-radius-sm, 4px);
+        font-size: var(--ha-font-size-s, 12px);
+        cursor: pointer;
+        font-family: inherit;
+        white-space: nowrap;
+        color: var(--primary-text-color);
+      }
+      .copy-btn:hover {
+        background: var(--secondary-background-color, #f5f5f5);
+      }
+      .example {
+        margin-bottom: var(--ha-space-2, 8px);
+      }
+      .example-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: var(--ha-space-2, 8px);
+      }
+      .example-title {
+        font-size: var(--ha-font-size-m, 14px);
+        font-weight: var(--ha-font-weight-medium, 500);
+        margin-bottom: var(--ha-space-1, 4px);
+      }
+      .yaml {
+        padding: var(--ha-space-3, 12px);
+        background: var(--secondary-background-color, #f5f5f5);
+        border-radius: var(--ha-border-radius-md, 8px);
+        font-size: var(--ha-font-size-s, 12px);
+        line-height: 1.5;
+        overflow-x: auto;
+        white-space: pre;
+        margin: var(--ha-space-2, 8px) 0 0;
+        font-family: "Roboto Mono", "SFMono-Regular", monospace;
+      }
+      .divider {
+        border: none;
+        border-top: 1px solid var(--divider-color, #e0e0e0);
+        margin: var(--ha-space-4, 16px) 0;
+      }
+      .services-list {
+        display: flex;
+        flex-direction: column;
+        gap: var(--ha-space-3, 12px);
+      }
+      .service-item {
+        display: flex;
+        flex-direction: column;
+        gap: var(--ha-space-1, 4px);
+      }
+      .service-item code {
+        font-size: var(--ha-font-size-s, 12px);
+        font-family: "Roboto Mono", "SFMono-Regular", monospace;
+        color: var(--primary-color, #03a9f4);
+      }
+      .service-item .hint {
+        margin: 0;
       }
     `,
   ];
