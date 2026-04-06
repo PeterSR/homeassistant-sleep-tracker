@@ -47,11 +47,43 @@ export class SleepTrackerApi {
     });
   }
 
+  async getStats(days = 30): Promise<any> {
+    return this.hass.callWS({
+      type: "sleep_tracker/get_stats",
+      days,
+    });
+  }
+
+  async deletePulse(session_id: string, pulse_index: number): Promise<SleepSession> {
+    return this.hass.callWS({
+      type: "sleep_tracker/delete_pulse",
+      session_id,
+      pulse_index,
+    });
+  }
+
+  async swapPulseType(session_id: string, pulse_index: number): Promise<SleepSession> {
+    return this.hass.callWS({
+      type: "sleep_tracker/swap_pulse_type",
+      session_id,
+      pulse_index,
+    });
+  }
+
+  async finalizeSession(session_id: string): Promise<SleepSession> {
+    return this.hass.callWS({
+      type: "sleep_tracker/finalize_session",
+      session_id,
+    });
+  }
+
   async updateSettings(
     updates: Partial<
       Pick<
         UserConfig,
+        | "sleep_onset_minutes"
         | "fall_asleep_latency_minutes"
+        | "auto_finalize_hours"
         | "export_url"
         | "export_headers"
         | "retention_days"

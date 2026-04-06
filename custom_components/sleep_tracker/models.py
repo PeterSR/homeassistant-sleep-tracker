@@ -13,7 +13,9 @@ class UserConfig:
     user_id: str
     enabled: bool = True
     display_name: str = ""
+    sleep_onset_minutes: int = 30
     fall_asleep_latency_minutes: int = 15
+    auto_finalize_hours: int = 12
     export_url: str | None = None
     export_headers: dict[str, str] = field(default_factory=dict)
     retention_days: int = 90
@@ -23,7 +25,9 @@ class UserConfig:
             "user_id": self.user_id,
             "enabled": self.enabled,
             "display_name": self.display_name,
+            "sleep_onset_minutes": self.sleep_onset_minutes,
             "fall_asleep_latency_minutes": self.fall_asleep_latency_minutes,
+            "auto_finalize_hours": self.auto_finalize_hours,
             "export_url": self.export_url,
             "export_headers": self.export_headers,
             "retention_days": self.retention_days,
@@ -35,7 +39,9 @@ class UserConfig:
             user_id=data["user_id"],
             enabled=data.get("enabled", True),
             display_name=data.get("display_name", ""),
+            sleep_onset_minutes=data.get("sleep_onset_minutes", 30),
             fall_asleep_latency_minutes=data.get("fall_asleep_latency_minutes", 15),
+            auto_finalize_hours=data.get("auto_finalize_hours", 12),
             export_url=data.get("export_url"),
             export_headers=data.get("export_headers", {}),
             retention_days=data.get("retention_days", 90),
@@ -75,6 +81,7 @@ class SleepSession:
     started_at: str  # ISO 8601
     ended_at: str | None = None  # ISO 8601, None if active
     pulses: list[SleepPulse] = field(default_factory=list)
+    finalized: bool = False
     exported: bool = False
 
     @property
@@ -88,6 +95,7 @@ class SleepSession:
             "started_at": self.started_at,
             "ended_at": self.ended_at,
             "pulses": [p.to_dict() for p in self.pulses],
+            "finalized": self.finalized,
             "exported": self.exported,
         }
 
@@ -99,6 +107,7 @@ class SleepSession:
             started_at=data["started_at"],
             ended_at=data.get("ended_at"),
             pulses=[SleepPulse.from_dict(p) for p in data.get("pulses", [])],
+            finalized=data.get("finalized", False),
             exported=data.get("exported", False),
         )
 

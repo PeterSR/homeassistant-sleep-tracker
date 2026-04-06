@@ -119,6 +119,13 @@ class SleepTrackerStore:
         )
         return completed[offset : offset + limit]
 
+    def get_unfinalized_sessions(self, user_id: str) -> list[SleepSession]:
+        """Get completed but not finalized sessions for a user."""
+        return [
+            s for s in self.sessions.values()
+            if s.user_id == user_id and not s.is_active and not s.finalized
+        ]
+
     def purge_old_sessions(self, user_id: str, retention_days: int) -> int:
         """Delete sessions older than retention period. Returns count deleted."""
         cutoff = datetime.now(timezone.utc).isoformat()

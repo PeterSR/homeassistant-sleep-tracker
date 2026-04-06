@@ -37,6 +37,12 @@ export class MainView extends LitElement {
           title: "Sleep Tracker",
           actions: html`
             <ha-icon-button
+              .label=${"Stats"}
+              @click=${() => this._navigate("/stats")}
+            >
+              <ha-icon icon="mdi:chart-line"></ha-icon>
+            </ha-icon-button>
+            <ha-icon-button
               .label=${"History"}
               @click=${() => this._navigate("/history")}
             >
@@ -135,8 +141,29 @@ export class MainView extends LitElement {
 
     // No active session
     const last = this.userState.last_session;
+    const unfinalized = this.userState.unfinalized_sessions || [];
     return html`
       <div class="container">
+        ${unfinalized.length > 0
+          ? html`
+              <div class="unfinalized-section">
+                <h3>Needs Review</h3>
+                ${unfinalized.map(
+                  (s) => html`
+                    <div class="unfinalized-card" @click=${() => this._navigate(`/night/${s.session_id}`)}>
+                      <ha-icon icon="mdi:pencil-circle-outline" class="review-icon"></ha-icon>
+                      <div class="unfinalized-info">
+                        <span class="unfinalized-date">${formatTime(s.started_at)} — ${s.ended_at ? formatTime(s.ended_at) : ""}</span>
+                        <span class="unfinalized-hint">Tap to review and finalize</span>
+                      </div>
+                      <ha-icon icon="mdi:chevron-right"></ha-icon>
+                    </div>
+                  `
+                )}
+              </div>
+            `
+          : nothing}
+
         <button class="big-button start" @click=${this._startSleep}>
           <ha-icon icon="mdi:sleep" style="--mdc-icon-size: 48px"></ha-icon>
           Start Sleep
@@ -204,6 +231,47 @@ export class MainView extends LitElement {
       .empty-hint {
         text-align: center;
         padding: var(--ha-space-8, 32px);
+        color: var(--secondary-text-color);
+      }
+      .unfinalized-section {
+        margin-bottom: var(--ha-space-4, 16px);
+      }
+      .unfinalized-section h3 {
+        font-size: var(--ha-font-size-m, 14px);
+        font-weight: var(--ha-font-weight-medium, 500);
+        text-transform: uppercase;
+        color: #e65100;
+        margin: 0 0 var(--ha-space-2, 8px);
+      }
+      .unfinalized-card {
+        display: flex;
+        align-items: center;
+        gap: var(--ha-space-3, 12px);
+        padding: var(--ha-space-3, 12px) var(--ha-space-4, 16px);
+        background: #fff3e0;
+        border-radius: var(--ha-border-radius-md, 8px);
+        cursor: pointer;
+        margin-bottom: var(--ha-space-2, 8px);
+      }
+      .unfinalized-card:hover {
+        background: #ffe0b2;
+      }
+      .review-icon {
+        color: #e65100;
+        --mdc-icon-size: 24px;
+        flex-shrink: 0;
+      }
+      .unfinalized-info {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+      }
+      .unfinalized-date {
+        font-size: var(--ha-font-size-m, 14px);
+        font-weight: var(--ha-font-weight-medium, 500);
+      }
+      .unfinalized-hint {
+        font-size: var(--ha-font-size-s, 12px);
         color: var(--secondary-text-color);
       }
     `,

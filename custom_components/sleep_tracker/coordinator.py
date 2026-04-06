@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 from homeassistant.core import HomeAssistant, callback
@@ -123,7 +123,7 @@ class SleepTrackerCoordinator:
     async def async_start_sleep(
         self, user_id: str, source: str = "manual"
     ) -> dict:
-        """Start a new sleep session."""
+        """Start a new sleep session. Auto-finalizes any pending sessions first."""
         config = self.store.get_user_config(user_id)
         if config is None:
             raise ValueError(f"User {user_id} is not set up for sleep tracking")
@@ -134,12 +134,20 @@ class SleepTrackerCoordinator:
                 f"User {user_id} already has an active session: {active.session_id}"
             )
 
+        # Auto-finalize any unfinalized sessions
+        await self._async_auto_finalize(user_id)
+
         session = SleepSession(
             session_id=str(uuid.uuid4()),
             user_id=user_id,
             started_at=datetime.now(timezone.utc).isoformat(),
         )
         self.store.add_session(session)
+
+        # Purge old sessions
+        purged = self.store.purge_old_sessions(user_id, config.retention_days)
+        if purged:
+            _LOGGER.debug("Purged %d old sessions for user %s", purged, user_id)
 
         self._notify_listeners(user_id)
         self.hass.bus.async_fire(
@@ -153,7 +161,7 @@ class SleepTrackerCoordinator:
     async def async_stop_sleep(
         self, user_id: str, source: str = "manual"
     ) -> dict:
-        """Stop the active sleep session."""
+        """Stop the active sleep session. Session remains editable until finalized."""
         session = self.store.get_active_session(user_id)
         if session is None:
             raise ValueError(f"User {user_id} has no active session")
@@ -161,22 +169,12 @@ class SleepTrackerCoordinator:
         ended_at = datetime.now(timezone.utc).isoformat()
         self.store.update_session(session.session_id, ended_at=ended_at)
 
-        # Purge old sessions
-        config = self.store.get_user_config(user_id)
-        if config:
-            purged = self.store.purge_old_sessions(user_id, config.retention_days)
-            if purged:
-                _LOGGER.debug("Purged %d old sessions for user %s", purged, user_id)
-
         self._notify_listeners(user_id)
-
-        stats = self._compute_session_stats(session)
         self.hass.bus.async_fire(
             "sleep_tracker_session_ended",
             {
                 "user_id": user_id,
                 "session_id": session.session_id,
-                **stats,
             },
         )
 
@@ -219,6 +217,100 @@ class SleepTrackerCoordinator:
         )
         return self._session_to_dict(session)
 
+    # --- Pulse editing (only for non-finalized, completed sessions) ---
+
+    async def async_delete_pulse(
+        self, user_id: str, session_id: str, pulse_index: int
+    ) -> dict:
+        """Delete a pulse from a session by index."""
+        session = self._get_editable_session(user_id, session_id)
+
+        if pulse_index < 0 or pulse_index >= len(session.pulses):
+            raise ValueError(f"Invalid pulse index: {pulse_index}")
+
+        session.pulses.pop(pulse_index)
+        self.store.update_session(session_id, pulses=session.pulses)
+        self._notify_listeners(user_id)
+        return self._session_to_dict(session)
+
+    async def async_swap_pulse_type(
+        self, user_id: str, session_id: str, pulse_index: int
+    ) -> dict:
+        """Swap a pulse's type between awake and still_awake."""
+        session = self._get_editable_session(user_id, session_id)
+
+        if pulse_index < 0 or pulse_index >= len(session.pulses):
+            raise ValueError(f"Invalid pulse index: {pulse_index}")
+
+        pulse = session.pulses[pulse_index]
+        pulse.pulse_type = (
+            PULSE_STILL_AWAKE if pulse.pulse_type == PULSE_AWAKE else PULSE_AWAKE
+        )
+        self.store.update_session(session_id, pulses=session.pulses)
+        self._notify_listeners(user_id)
+        return self._session_to_dict(session)
+
+    def _get_editable_session(
+        self, user_id: str, session_id: str
+    ) -> SleepSession:
+        """Get a session that can be edited (completed, not finalized, owned)."""
+        session = self.store.get_session(session_id)
+        if session is None or session.user_id != user_id:
+            raise ValueError("Session not found")
+        if session.is_active:
+            raise ValueError("Cannot edit an active session")
+        if session.finalized:
+            raise ValueError("Cannot edit a finalized session")
+        return session
+
+    # --- Finalization ---
+
+    async def async_finalize_session(
+        self, user_id: str, session_id: str
+    ) -> dict:
+        """Finalize a session: mark as final, export if configured."""
+        session = self.store.get_session(session_id)
+        if session is None or session.user_id != user_id:
+            raise ValueError("Session not found")
+        if session.is_active:
+            raise ValueError("Cannot finalize an active session")
+        if session.finalized:
+            raise ValueError("Session is already finalized")
+
+        self.store.update_session(session_id, finalized=True)
+
+        # Auto-export if configured
+        config = self.store.get_user_config(user_id)
+        if config and config.export_url:
+            try:
+                from .export import async_export_session
+                await async_export_session(self.hass, self, session_id)
+                _LOGGER.info("Session %s auto-exported on finalization", session_id)
+            except Exception:
+                _LOGGER.exception("Auto-export failed for session %s", session_id)
+
+        self._notify_listeners(user_id)
+        self.hass.bus.async_fire(
+            "sleep_tracker_session_finalized",
+            {"user_id": user_id, "session_id": session_id},
+        )
+        return self._session_to_dict(session)
+
+    async def _async_auto_finalize(self, user_id: str) -> None:
+        """Auto-finalize all unfinalized completed sessions for a user."""
+        unfinalized = self.store.get_unfinalized_sessions(user_id)
+        for session in unfinalized:
+            try:
+                await self.async_finalize_session(user_id, session.session_id)
+                _LOGGER.info(
+                    "Auto-finalized session %s for user %s",
+                    session.session_id, user_id,
+                )
+            except Exception:
+                _LOGGER.exception(
+                    "Failed to auto-finalize session %s", session.session_id
+                )
+
     # --- State queries ---
 
     def get_user_state(self, user_id: str) -> dict:
@@ -233,12 +325,16 @@ class SleepTrackerCoordinator:
             ),
         }
 
-        # Include last completed session summary if no active session
         if not active_session and config:
+            # Include last completed session and any unfinalized sessions
             history = self.store.get_user_sessions(user_id, limit=1)
             result["last_session"] = (
                 self._session_to_dict(history[0]) if history else None
             )
+            unfinalized = self.store.get_unfinalized_sessions(user_id)
+            result["unfinalized_sessions"] = [
+                self._session_to_dict(s) for s in unfinalized
+            ]
 
         return result
 
@@ -256,18 +352,79 @@ class SleepTrackerCoordinator:
             return None
         return self._session_to_dict(session)
 
+    # --- Aggregate stats ---
+
+    def get_user_stats(self, user_id: str, days: int = 30) -> dict:
+        """Get aggregated sleep statistics over a period."""
+        cutoff_dt = datetime.now(timezone.utc) - timedelta(days=days)
+        cutoff = cutoff_dt.isoformat()
+
+        sessions = [
+            s for s in self.store.sessions.values()
+            if s.user_id == user_id
+            and not s.is_active
+            and s.ended_at
+            and s.started_at >= cutoff
+        ]
+        sessions.sort(key=lambda s: s.started_at)
+
+        params = self._get_user_timeline_params(user_id)
+        daily: list[dict] = []
+
+        for session in sessions:
+            intervals = compute_intervals(
+                session.started_at, session.ended_at, session.pulses, **params
+            )
+            stats = compute_stats(intervals, session.started_at, session.ended_at)
+            daily.append({
+                "session_id": session.session_id,
+                "date": session.started_at[:10],
+                "started_at": session.started_at,
+                "ended_at": session.ended_at,
+                **stats,
+            })
+
+        # Compute averages
+        n = len(daily)
+        if n > 0:
+            avg_sleep = sum(d["total_sleep_minutes"] for d in daily) / n
+            avg_efficiency = sum(d["sleep_efficiency"] for d in daily) / n
+            avg_awakenings = sum(d["awakenings"] for d in daily) / n
+            avg_time_to_sleep = sum(d["time_to_fall_asleep_minutes"] for d in daily) / n
+        else:
+            avg_sleep = avg_efficiency = avg_awakenings = avg_time_to_sleep = 0
+
+        return {
+            "days": days,
+            "session_count": n,
+            "daily": daily,
+            "averages": {
+                "total_sleep_minutes": round(avg_sleep, 1),
+                "sleep_efficiency": round(avg_efficiency, 3),
+                "awakenings": round(avg_awakenings, 1),
+                "time_to_fall_asleep_minutes": round(avg_time_to_sleep, 1),
+            },
+        }
+
     # --- Helpers ---
+
+    def _get_user_timeline_params(self, user_id: str) -> dict:
+        """Get timeline computation parameters for a user."""
+        config = self.store.get_user_config(user_id)
+        return {
+            "fall_asleep_latency_minutes": config.fall_asleep_latency_minutes if config else 15,
+            "sleep_onset_minutes": config.sleep_onset_minutes if config else 0,
+        }
 
     def _session_to_dict(self, session: SleepSession) -> dict:
         """Convert session to dict with computed intervals and stats."""
-        config = self.store.get_user_config(session.user_id)
-        latency = config.fall_asleep_latency_minutes if config else 15
+        params = self._get_user_timeline_params(session.user_id)
 
         intervals = compute_intervals(
             session.started_at,
             session.ended_at,
             session.pulses,
-            latency,
+            **params,
         )
 
         result = session.to_dict()
@@ -281,17 +438,3 @@ class SleepTrackerCoordinator:
             result["stats"] = None
 
         return result
-
-    def _compute_session_stats(self, session: SleepSession) -> dict:
-        """Compute stats for a session (for events)."""
-        if not session.ended_at:
-            return {}
-        config = self.store.get_user_config(session.user_id)
-        latency = config.fall_asleep_latency_minutes if config else 15
-        intervals = compute_intervals(
-            session.started_at,
-            session.ended_at,
-            session.pulses,
-            latency,
-        )
-        return compute_stats(intervals, session.started_at, session.ended_at)

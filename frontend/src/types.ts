@@ -50,6 +50,7 @@ export interface SleepSession {
   started_at: string;
   ended_at: string | null;
   pulses: SleepPulse[];
+  finalized: boolean;
   exported: boolean;
   intervals: TimelineInterval[];
   stats: SessionStats | null;
@@ -59,7 +60,9 @@ export interface UserConfig {
   user_id: string;
   enabled: boolean;
   display_name: string;
+  sleep_onset_minutes: number;
   fall_asleep_latency_minutes: number;
+  auto_finalize_hours: number;
   export_url: string | null;
   export_headers: Record<string, string>;
   retention_days: number;
@@ -69,4 +72,5 @@ export interface UserState {
   config: UserConfig | null;
   active_session: SleepSession | null;
   last_session?: SleepSession | null;
+  unfinalized_sessions?: SleepSession[];
 }

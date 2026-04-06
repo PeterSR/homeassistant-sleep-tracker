@@ -8,6 +8,7 @@ import "./views/main-view";
 import "./views/history-view";
 import "./views/night-detail-view";
 import "./views/settings-view";
+import "./views/stats-view";
 
 @customElement("sleep-tracker-panel")
 export class SleepTrackerPanel extends LitElement {
@@ -158,6 +159,19 @@ export class SleepTrackerPanel extends LitElement {
           @navigate=${this._onNavigate}
           @set-toolbar=${this._onSetToolbar}
         ></night-detail-view>
+      `;
+    }
+
+    if (this._path === "/stats") {
+      return html`
+        <stats-view
+          .hass=${this.hass}
+          .api=${this._api}
+          .userState=${this._userState}
+          .narrow=${this.narrow}
+          @navigate=${this._onNavigate}
+          @set-toolbar=${this._onSetToolbar}
+        ></stats-view>
       `;
     }
 

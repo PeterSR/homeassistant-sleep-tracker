@@ -25,12 +25,15 @@ def compute_intervals(
     ended_at: str | None,
     pulses: list[SleepPulse],
     fall_asleep_latency_minutes: int = 15,
+    sleep_onset_minutes: int = 0,
     now: datetime | None = None,
 ) -> list[TimelineInterval]:
     """Compute awake/asleep intervals from session data.
 
     Algorithm:
     - Session starts in AWAKE state (user just lay down).
+    - Pulses within sleep_onset_minutes from start are ignored
+      (the user is still settling in, phone activity is expected).
     - After fall_asleep_latency, user transitions to ASLEEP.
     - An "awake" pulse means the user woke up (ASLEEP -> AWAKE).
       The fall-asleep timer resets.
@@ -41,8 +44,12 @@ def compute_intervals(
     start_dt = _parse(started_at)
     end_dt = _parse(ended_at) if ended_at else (now or datetime.now(timezone.utc))
     latency = timedelta(minutes=fall_asleep_latency_minutes)
+    onset_cutoff = start_dt + timedelta(minutes=sleep_onset_minutes)
 
-    sorted_pulses = sorted(pulses, key=lambda p: p.timestamp)
+    sorted_pulses = [
+        p for p in sorted(pulses, key=lambda p: p.timestamp)
+        if _parse(p.timestamp) >= onset_cutoff
+    ]
 
     intervals: list[TimelineInterval] = []
     state = "awake"

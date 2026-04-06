@@ -25,6 +25,10 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_pulse)
     websocket_api.async_register_command(hass, ws_setup_user)
     websocket_api.async_register_command(hass, ws_update_settings)
+    websocket_api.async_register_command(hass, ws_get_stats)
+    websocket_api.async_register_command(hass, ws_delete_pulse)
+    websocket_api.async_register_command(hass, ws_swap_pulse_type)
+    websocket_api.async_register_command(hass, ws_finalize_session)
     websocket_api.async_register_command(hass, ws_export_session)
     websocket_api.async_register_command(hass, ws_subscribe)
 
@@ -91,6 +95,25 @@ async def ws_get_session(
         return
 
     connection.send_result(msg["id"], session)
+
+
+# --- Get Stats ---
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "sleep_tracker/get_stats",
+        vol.Optional("days", default=30): vol.All(int, vol.Range(min=7, max=365)),
+    }
+)
+@websocket_api.async_response
+async def ws_get_stats(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Get aggregated sleep statistics for the current user."""
+    coordinator = _get_data(hass)["coordinator"]
+    user_id = connection.user.id
+    stats = coordinator.get_user_stats(user_id, msg["days"])
+    connection.send_result(msg["id"], stats)
 
 
 # --- Start Sleep ---
@@ -187,8 +210,14 @@ async def ws_setup_user(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "sleep_tracker/update_settings",
+        vol.Optional("sleep_onset_minutes"): vol.All(
+            int, vol.Range(min=0, max=120)
+        ),
         vol.Optional("fall_asleep_latency_minutes"): vol.All(
             int, vol.Range(min=0, max=120)
+        ),
+        vol.Optional("auto_finalize_hours"): vol.All(
+            int, vol.Range(min=1, max=48)
         ),
         vol.Optional("export_url"): vol.Any(str, None),
         vol.Optional("export_headers"): dict,
@@ -216,6 +245,83 @@ async def ws_update_settings(
         connection.send_result(msg["id"], config)
     except ValueError as err:
         connection.send_error(msg["id"], "update_failed", str(err))
+
+
+# --- Delete Pulse ---
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "sleep_tracker/delete_pulse",
+        vol.Required("session_id"): str,
+        vol.Required("pulse_index"): int,
+    }
+)
+@websocket_api.async_response
+async def ws_delete_pulse(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Delete a pulse from a session."""
+    coordinator = _get_data(hass)["coordinator"]
+    user_id = connection.user.id
+
+    try:
+        session = await coordinator.async_delete_pulse(
+            user_id, msg["session_id"], msg["pulse_index"]
+        )
+        connection.send_result(msg["id"], session)
+    except ValueError as err:
+        connection.send_error(msg["id"], "delete_failed", str(err))
+
+
+# --- Swap Pulse Type ---
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "sleep_tracker/swap_pulse_type",
+        vol.Required("session_id"): str,
+        vol.Required("pulse_index"): int,
+    }
+)
+@websocket_api.async_response
+async def ws_swap_pulse_type(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Swap a pulse's type between awake and still_awake."""
+    coordinator = _get_data(hass)["coordinator"]
+    user_id = connection.user.id
+
+    try:
+        session = await coordinator.async_swap_pulse_type(
+            user_id, msg["session_id"], msg["pulse_index"]
+        )
+        connection.send_result(msg["id"], session)
+    except ValueError as err:
+        connection.send_error(msg["id"], "swap_failed", str(err))
+
+
+# --- Finalize Session ---
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "sleep_tracker/finalize_session",
+        vol.Required("session_id"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_finalize_session(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Finalize a session (locks edits, triggers export if configured)."""
+    coordinator = _get_data(hass)["coordinator"]
+    user_id = connection.user.id
+
+    try:
+        session = await coordinator.async_finalize_session(
+            user_id, msg["session_id"]
+        )
+        connection.send_result(msg["id"], session)
+    except ValueError as err:
+        connection.send_error(msg["id"], "finalize_failed", str(err))
 
 
 # --- Export Session ---

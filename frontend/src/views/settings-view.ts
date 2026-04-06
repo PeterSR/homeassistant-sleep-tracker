@@ -11,7 +11,9 @@ export class SettingsView extends LitElement {
   @property({ attribute: false }) userState!: UserState;
   @property({ type: Boolean }) narrow = false;
 
+  @state() private _onset = 30;
   @state() private _latency = 15;
+  @state() private _autoFinalize = 12;
   @state() private _exportUrl = "";
   @state() private _retentionDays = 90;
   @state() private _saving = false;
@@ -32,7 +34,9 @@ export class SettingsView extends LitElement {
   private _loadFromState() {
     const config = this.userState?.config;
     if (config) {
+      this._onset = config.sleep_onset_minutes;
       this._latency = config.fall_asleep_latency_minutes;
+      this._autoFinalize = config.auto_finalize_hours;
       this._exportUrl = config.export_url || "";
       this._retentionDays = config.retention_days;
     }
@@ -52,7 +56,9 @@ export class SettingsView extends LitElement {
     this._saving = true;
     try {
       await this.api.updateSettings({
+        sleep_onset_minutes: this._onset,
         fall_asleep_latency_minutes: this._latency,
+        auto_finalize_hours: this._autoFinalize,
         export_url: this._exportUrl || null,
         retention_days: this._retentionDays,
       });
@@ -64,8 +70,18 @@ export class SettingsView extends LitElement {
     }
   }
 
+  private _onOnsetChange(e: Event) {
+    this._onset = parseInt((e.target as HTMLInputElement).value) || 30;
+    this._dirty = true;
+  }
+
   private _onLatencyChange(e: Event) {
     this._latency = parseInt((e.target as HTMLInputElement).value) || 15;
+    this._dirty = true;
+  }
+
+  private _onAutoFinalizeChange(e: Event) {
+    this._autoFinalize = parseInt((e.target as HTMLInputElement).value) || 12;
     this._dirty = true;
   }
 
@@ -161,6 +177,19 @@ data:
           <div class="card-header">Sleep Settings</div>
           <div class="form">
             <div class="field">
+              <label>Sleep onset (minutes)</label>
+              <input
+                type="range"
+                min="0"
+                max="120"
+                step="5"
+                .value=${String(this._onset)}
+                @input=${this._onOnsetChange}
+              />
+              <span class="range-value">${this._onset} min — pulses within this window after starting sleep are ignored</span>
+            </div>
+
+            <div class="field">
               <label>Fall-asleep latency (minutes)</label>
               <input
                 type="range"
@@ -170,7 +199,20 @@ data:
                 .value=${String(this._latency)}
                 @input=${this._onLatencyChange}
               />
-              <span class="range-value">${this._latency} min</span>
+              <span class="range-value">${this._latency} min — assumed time to fall back asleep after a pulse</span>
+            </div>
+
+            <div class="field">
+              <label>Auto-finalize after (hours)</label>
+              <input
+                type="range"
+                min="1"
+                max="48"
+                step="1"
+                .value=${String(this._autoFinalize)}
+                @input=${this._onAutoFinalizeChange}
+              />
+              <span class="range-value">${this._autoFinalize}h — unfinalized sessions are auto-finalized when you start the next sleep</span>
             </div>
 
             <div class="field">
