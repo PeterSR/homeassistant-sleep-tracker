@@ -81,6 +81,16 @@ export class SettingsView extends LitElement {
 
   @state() private _copied: string | null = null;
 
+  private _showEntity(entityId: string) {
+    this.dispatchEvent(
+      new CustomEvent("hass-more-info", {
+        bubbles: true,
+        composed: true,
+        detail: { entityId },
+      })
+    );
+  }
+
   private _copy(text: string, label: string) {
     navigator.clipboard.writeText(text).then(() => {
       this._copied = label;
@@ -289,19 +299,31 @@ data:
         <ha-card class="info-card">
           <div class="card-header">Available Entities</div>
           <div class="services-list">
-            <div class="service-item">
+            <div
+              class="service-item clickable"
+              @click=${() => this._showEntity(`binary_sensor.sleep_tracker_${this._slug}_sleeping`)}
+            >
               <code>binary_sensor.sleep_tracker_${this._slug}_sleeping</code>
               <span class="hint">On when sleeping — use as condition in automations</span>
             </div>
-            <div class="service-item">
+            <div
+              class="service-item clickable"
+              @click=${() => this._showEntity(`sensor.sleep_tracker_${this._slug}_last_awake`)}
+            >
               <code>sensor.sleep_tracker_${this._slug}_last_awake</code>
               <span class="hint">Timestamp of last awake pulse</span>
             </div>
-            <div class="service-item">
+            <div
+              class="service-item clickable"
+              @click=${() => this._showEntity(`sensor.sleep_tracker_${this._slug}_sleep_duration`)}
+            >
               <code>sensor.sleep_tracker_${this._slug}_sleep_duration</code>
               <span class="hint">Total sleep minutes (last completed session)</span>
             </div>
-            <div class="service-item">
+            <div
+              class="service-item clickable"
+              @click=${() => this._showEntity(`sensor.sleep_tracker_${this._slug}_awake_count`)}
+            >
               <code>sensor.sleep_tracker_${this._slug}_awake_count</code>
               <span class="hint">Number of awakenings</span>
             </div>
@@ -432,6 +454,15 @@ data:
       }
       .service-item .hint {
         margin: 0;
+      }
+      .service-item.clickable {
+        cursor: pointer;
+        padding: var(--ha-space-2, 8px) var(--ha-space-3, 12px);
+        border-radius: var(--ha-border-radius-md, 8px);
+        transition: background 0.15s;
+      }
+      .service-item.clickable:hover {
+        background: var(--secondary-background-color, #f5f5f5);
       }
     `,
   ];
