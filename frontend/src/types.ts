@@ -54,6 +54,7 @@ export interface SleepSession {
   exported: boolean;
   intervals: TimelineInterval[];
   stats: SessionStats | null;
+  undo_count?: number;
 }
 
 export interface UserConfig {

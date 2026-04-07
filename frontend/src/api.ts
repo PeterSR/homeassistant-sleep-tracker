@@ -70,6 +70,26 @@ export class SleepTrackerApi {
     });
   }
 
+  async updatePulse(
+    session_id: string,
+    pulse_index: number,
+    updates: { timestamp?: string; pulse_type?: "awake" | "still_awake" }
+  ): Promise<SleepSession> {
+    return this.hass.callWS({
+      type: "sleep_tracker/update_pulse",
+      session_id,
+      pulse_index,
+      ...updates,
+    });
+  }
+
+  async undoEdit(session_id: string): Promise<SleepSession> {
+    return this.hass.callWS({
+      type: "sleep_tracker/undo_edit",
+      session_id,
+    });
+  }
+
   async finalizeSession(session_id: string): Promise<SleepSession> {
     return this.hass.callWS({
       type: "sleep_tracker/finalize_session",

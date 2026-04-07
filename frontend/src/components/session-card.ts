@@ -6,7 +6,7 @@ import { formatDate, formatTime, formatDuration } from "../utils";
 
 import "./timeline-bar";
 
-@customElement("session-card")
+@customElement("sleep-tracker-session-card")
 export class SessionCard extends LitElement {
   @property({ attribute: false }) session!: SleepSession;
 
@@ -32,13 +32,13 @@ export class SessionCard extends LitElement {
             ${formatTime(s.started_at)} — ${s.ended_at ? formatTime(s.ended_at) : "..."}
           </span>
         </div>
-        <timeline-bar
+        <sleep-tracker-timeline-bar
           .intervals=${s.intervals}
           .pulses=${s.pulses}
           .startedAt=${s.started_at}
           .endedAt=${s.ended_at}
           compact
-        ></timeline-bar>
+        ></sleep-tracker-timeline-bar>
         ${s.stats
           ? html`
               <div class="summary">

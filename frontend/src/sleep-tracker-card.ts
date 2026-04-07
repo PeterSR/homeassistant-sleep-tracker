@@ -140,13 +140,13 @@ class SleepTrackerStatusCard extends LitElement {
               <span class="time-info">${timeAgo(active.started_at)}</span>
             </div>
 
-            <timeline-bar
+            <sleep-tracker-timeline-bar
               .intervals=${active.intervals}
               .pulses=${active.pulses}
               .startedAt=${active.started_at}
               .endedAt=${null}
               compact
-            ></timeline-bar>
+            ></sleep-tracker-timeline-bar>
 
             <div class="actions">
               <button
@@ -193,13 +193,13 @@ class SleepTrackerStatusCard extends LitElement {
 
           ${last
             ? html`
-                <timeline-bar
+                <sleep-tracker-timeline-bar
                   .intervals=${last.intervals}
                   .pulses=${last.pulses}
                   .startedAt=${last.started_at}
                   .endedAt=${last.ended_at}
                   compact
-                ></timeline-bar>
+                ></sleep-tracker-timeline-bar>
               `
             : nothing}
 

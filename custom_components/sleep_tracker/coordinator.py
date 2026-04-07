@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
+
+from homeassistant.util import dt as dt_util
 from typing import Any, Callable
 
 from homeassistant.core import HomeAssistant, callback
@@ -29,6 +31,9 @@ class SleepTrackerCoordinator:
         self.store = store
         self._listeners: list[Callable[[], None]] = []
         self._user_listeners: dict[str, list[Callable[[], None]]] = {}
+        # In-memory edit history for undo: session_id -> list of pulse list snapshots
+        self._edit_history: dict[str, list[list[SleepPulse]]] = {}
+        self._max_history = 30
 
     # --- Listener management ---
 
@@ -140,7 +145,7 @@ class SleepTrackerCoordinator:
         session = SleepSession(
             session_id=str(uuid.uuid4()),
             user_id=user_id,
-            started_at=datetime.now(timezone.utc).isoformat(),
+            started_at=dt_util.now().isoformat(),
         )
         self.store.add_session(session)
 
@@ -166,7 +171,7 @@ class SleepTrackerCoordinator:
         if session is None:
             raise ValueError(f"User {user_id} has no active session")
 
-        ended_at = datetime.now(timezone.utc).isoformat()
+        ended_at = dt_util.now().isoformat()
         self.store.update_session(session.session_id, ended_at=ended_at)
 
         self._notify_listeners(user_id)
@@ -184,7 +189,12 @@ class SleepTrackerCoordinator:
     async def async_pulse(
         self, user_id: str, pulse_type: str, source: str = "manual"
     ) -> dict:
-        """Record a pulse in the active session."""
+        """Record a pulse in the active session.
+
+        If the user is currently in the awake state (initial onset/latency window
+        or still within a previous awake window), an "awake" pulse is auto-demoted
+        to "still_awake" — you can't wake up if you haven't fallen asleep yet.
+        """
         if pulse_type not in PULSE_TYPES:
             raise ValueError(f"Invalid pulse type: {pulse_type}")
 
@@ -192,8 +202,22 @@ class SleepTrackerCoordinator:
         if session is None:
             raise ValueError(f"User {user_id} has no active session")
 
+        now = dt_util.now()
+
+        # Auto-demote awake -> still_awake when currently awake
+        if pulse_type == PULSE_AWAKE:
+            params = self._get_user_timeline_params(user_id)
+            intervals = compute_intervals(
+                session.started_at, None, session.pulses, **params, now=now
+            )
+            if intervals and intervals[-1].state == "awake":
+                pulse_type = PULSE_STILL_AWAKE
+                _LOGGER.debug(
+                    "Auto-demoted awake pulse to still_awake for user %s", user_id
+                )
+
         pulse = SleepPulse(
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=now.isoformat(),
             pulse_type=pulse_type,
             source=source,
         )
@@ -219,6 +243,16 @@ class SleepTrackerCoordinator:
 
     # --- Pulse editing (only for non-finalized, completed sessions) ---
 
+    def _push_edit_history(self, session: SleepSession) -> None:
+        """Snapshot current pulses for undo."""
+        history = self._edit_history.setdefault(session.session_id, [])
+        snapshot = [
+            SleepPulse(p.timestamp, p.pulse_type, p.source) for p in session.pulses
+        ]
+        history.append(snapshot)
+        if len(history) > self._max_history:
+            history.pop(0)
+
     async def async_delete_pulse(
         self, user_id: str, session_id: str, pulse_index: int
     ) -> dict:
@@ -228,6 +262,7 @@ class SleepTrackerCoordinator:
         if pulse_index < 0 or pulse_index >= len(session.pulses):
             raise ValueError(f"Invalid pulse index: {pulse_index}")
 
+        self._push_edit_history(session)
         session.pulses.pop(pulse_index)
         self.store.update_session(session_id, pulses=session.pulses)
         self._notify_listeners(user_id)
@@ -242,6 +277,7 @@ class SleepTrackerCoordinator:
         if pulse_index < 0 or pulse_index >= len(session.pulses):
             raise ValueError(f"Invalid pulse index: {pulse_index}")
 
+        self._push_edit_history(session)
         pulse = session.pulses[pulse_index]
         pulse.pulse_type = (
             PULSE_STILL_AWAKE if pulse.pulse_type == PULSE_AWAKE else PULSE_AWAKE
@@ -249,6 +285,69 @@ class SleepTrackerCoordinator:
         self.store.update_session(session_id, pulses=session.pulses)
         self._notify_listeners(user_id)
         return self._session_to_dict(session)
+
+    async def async_update_pulse(
+        self,
+        user_id: str,
+        session_id: str,
+        pulse_index: int,
+        timestamp: str | None = None,
+        pulse_type: str | None = None,
+    ) -> dict:
+        """Update a pulse's timestamp and/or type."""
+        session = self._get_editable_session(user_id, session_id)
+
+        if pulse_index < 0 or pulse_index >= len(session.pulses):
+            raise ValueError(f"Invalid pulse index: {pulse_index}")
+
+        if pulse_type is not None and pulse_type not in PULSE_TYPES:
+            raise ValueError(f"Invalid pulse type: {pulse_type}")
+
+        if timestamp is not None:
+            # Validate timestamp is within session bounds
+            try:
+                pt = datetime.fromisoformat(timestamp)
+            except ValueError as err:
+                raise ValueError(f"Invalid timestamp: {timestamp}") from err
+            start = datetime.fromisoformat(session.started_at)
+            end = datetime.fromisoformat(session.ended_at) if session.ended_at else None
+            if pt < start or (end and pt > end):
+                raise ValueError("Timestamp outside session bounds")
+
+        pulse = session.pulses[pulse_index]
+        # Detect if anything actually changed (avoid creating useless undo entries)
+        ts_changed = timestamp is not None and timestamp != pulse.timestamp
+        type_changed = pulse_type is not None and pulse_type != pulse.pulse_type
+        if not ts_changed and not type_changed:
+            return self._session_to_dict(session)
+
+        self._push_edit_history(session)
+        if ts_changed:
+            pulse.timestamp = timestamp
+        if type_changed:
+            pulse.pulse_type = pulse_type
+        # Re-sort pulses by timestamp
+        session.pulses.sort(key=lambda p: p.timestamp)
+        self.store.update_session(session_id, pulses=session.pulses)
+        self._notify_listeners(user_id)
+        return self._session_to_dict(session)
+
+    async def async_undo_edit(self, user_id: str, session_id: str) -> dict:
+        """Undo the most recent edit on a session."""
+        session = self._get_editable_session(user_id, session_id)
+        history = self._edit_history.get(session_id, [])
+        if not history:
+            raise ValueError("Nothing to undo")
+
+        previous_pulses = history.pop()
+        session.pulses = previous_pulses
+        self.store.update_session(session_id, pulses=session.pulses)
+        self._notify_listeners(user_id)
+        return self._session_to_dict(session)
+
+    def get_edit_history_count(self, session_id: str) -> int:
+        """Get the number of undoable edits for a session."""
+        return len(self._edit_history.get(session_id, []))
 
     def _get_editable_session(
         self, user_id: str, session_id: str
@@ -278,6 +377,8 @@ class SleepTrackerCoordinator:
             raise ValueError("Session is already finalized")
 
         self.store.update_session(session_id, finalized=True)
+        # Clear edit history once finalized
+        self._edit_history.pop(session_id, None)
 
         # Auto-export if configured
         config = self.store.get_user_config(user_id)
@@ -356,16 +457,20 @@ class SleepTrackerCoordinator:
 
     def get_user_stats(self, user_id: str, days: int = 30) -> dict:
         """Get aggregated sleep statistics over a period."""
-        cutoff_dt = datetime.now(timezone.utc) - timedelta(days=days)
-        cutoff = cutoff_dt.isoformat()
+        cutoff_dt = dt_util.now() - timedelta(days=days)
 
-        sessions = [
-            s for s in self.store.sessions.values()
-            if s.user_id == user_id
-            and not s.is_active
-            and s.ended_at
-            and s.started_at >= cutoff
-        ]
+        sessions: list[SleepSession] = []
+        for s in self.store.sessions.values():
+            if s.user_id != user_id or s.is_active or not s.ended_at:
+                continue
+            try:
+                started = datetime.fromisoformat(s.started_at)
+            except ValueError:
+                continue
+            if started.tzinfo is None:
+                started = started.replace(tzinfo=cutoff_dt.tzinfo)
+            if started >= cutoff_dt:
+                sessions.append(s)
         sessions.sort(key=lambda s: s.started_at)
 
         params = self._get_user_timeline_params(user_id)
@@ -429,6 +534,7 @@ class SleepTrackerCoordinator:
 
         result = session.to_dict()
         result["intervals"] = [i.to_dict() for i in intervals]
+        result["undo_count"] = self.get_edit_history_count(session.session_id)
 
         if session.ended_at:
             result["stats"] = compute_stats(

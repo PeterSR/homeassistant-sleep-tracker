@@ -4,7 +4,7 @@ import type { HomeAssistant, UserState, ToolbarConfig } from "../types";
 import type { SleepTrackerApi } from "../api";
 import { tokens, viewStyles, formStyles, cardStyles } from "../styles";
 
-@customElement("settings-view")
+@customElement("sleep-tracker-settings-view")
 export class SettingsView extends LitElement {
   @property({ attribute: false }) hass!: HomeAssistant;
   @property({ attribute: false }) api!: SleepTrackerApi;
@@ -186,7 +186,7 @@ data:
                 .value=${String(this._onset)}
                 @input=${this._onOnsetChange}
               />
-              <span class="range-value">${this._onset} min — pulses within this window after starting sleep are ignored</span>
+              <span class="range-value">${this._onset} min — minimum settling period before falling asleep (pulses extend the timer but don't count as awakenings)</span>
             </div>
 
             <div class="field">

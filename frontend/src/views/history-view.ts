@@ -6,7 +6,7 @@ import { tokens, viewStyles, emptyStateStyles } from "../styles";
 
 import "../components/session-card";
 
-@customElement("history-view")
+@customElement("sleep-tracker-history-view")
 export class HistoryView extends LitElement {
   @property({ attribute: false }) hass!: HomeAssistant;
   @property({ attribute: false }) api!: SleepTrackerApi;
@@ -75,7 +75,7 @@ export class HistoryView extends LitElement {
       <div class="container">
         <div class="sessions-list">
           ${this._sessions.map(
-            (s) => html`<session-card .session=${s}></session-card>`
+            (s) => html`<sleep-tracker-session-card .session=${s}></sleep-tracker-session-card>`
           )}
         </div>
         ${this._hasMore

@@ -13,7 +13,7 @@ class UserConfig:
     user_id: str
     enabled: bool = True
     display_name: str = ""
-    sleep_onset_minutes: int = 30
+    sleep_onset_minutes: int = 0
     fall_asleep_latency_minutes: int = 15
     auto_finalize_hours: int = 12
     export_url: str | None = None

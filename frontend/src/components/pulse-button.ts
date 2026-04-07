@@ -3,7 +3,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import type { SleepTrackerApi } from "../api";
 import { tokens, buttonStyles } from "../styles";
 
-@customElement("pulse-button")
+@customElement("sleep-tracker-pulse-button")
 export class PulseButton extends LitElement {
   @property({ attribute: false }) api!: SleepTrackerApi;
   @property({ type: Boolean }) disabled = false;
@@ -15,6 +15,12 @@ export class PulseButton extends LitElement {
     this._sending = true;
     try {
       await this.api.pulse(type);
+      this.dispatchEvent(
+        new CustomEvent("sleep-tracker-state-update", {
+          bubbles: true,
+          composed: true,
+        })
+      );
       this._flash = type;
       setTimeout(() => {
         this._flash = null;

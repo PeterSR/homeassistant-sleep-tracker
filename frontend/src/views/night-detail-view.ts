@@ -8,7 +8,7 @@ import { formatDate, formatTime } from "../utils";
 import "../components/timeline-bar";
 import "../components/night-stats";
 
-@customElement("night-detail-view")
+@customElement("sleep-tracker-night-detail-view")
 export class NightDetailView extends LitElement {
   @property({ attribute: false }) hass!: HomeAssistant;
   @property({ attribute: false }) api!: SleepTrackerApi;
@@ -19,10 +19,15 @@ export class NightDetailView extends LitElement {
   @state() private _session: SleepSession | null = null;
   @state() private _loading = true;
   @state() private _busy = false;
+  @state() private _editingTimeIndex: number | null = null;
 
   connectedCallback(): void {
     super.connectedCallback();
     this._load();
+  }
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback();
   }
 
   willUpdate(changed: PropertyValues): void {
@@ -84,6 +89,86 @@ export class NightDetailView extends LitElement {
     }
   }
 
+  private async _undo() {
+    if (!this._session || this._busy) return;
+    this._busy = true;
+    try {
+      this._session = await this.api.undoEdit(this._session.session_id);
+    } catch (err) {
+      console.error("Undo failed:", err);
+    } finally {
+      this._busy = false;
+    }
+  }
+
+  private _startEditTime(index: number) {
+    if (!this._editable) return;
+    this._editingTimeIndex = index;
+  }
+
+  private _cancelEditTime() {
+    this._editingTimeIndex = null;
+  }
+
+  private async _commitEditTime(index: number) {
+    if (!this._session) return;
+    const input = this.shadowRoot?.querySelector(".time-input") as HTMLInputElement | null;
+    if (!input) {
+      this._editingTimeIndex = null;
+      return;
+    }
+    const newTimeValue = input.value; // "HH:MM" or "HH:MM:SS"
+    if (!newTimeValue) {
+      this._editingTimeIndex = null;
+      return;
+    }
+
+    // Build a new ISO timestamp by replacing the time portion of the existing pulse
+    const oldTs = this._session.pulses[index].timestamp;
+    const oldDate = new Date(oldTs);
+    const [h, m] = newTimeValue.split(":").map(Number);
+    oldDate.setHours(h, m, 0, 0);
+
+    // Format as local ISO with TZ offset
+    const newTs = this._toLocalIso(oldDate);
+
+    this._busy = true;
+    this._editingTimeIndex = null;
+    try {
+      this._session = await this.api.updatePulse(
+        this._session.session_id,
+        index,
+        { timestamp: newTs }
+      );
+    } catch (err) {
+      console.error("Update pulse time failed:", err);
+    } finally {
+      this._busy = false;
+    }
+  }
+
+  private _toLocalIso(d: Date): string {
+    // Returns ISO 8601 with local TZ offset, e.g. "2026-04-06T04:18:00+02:00"
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const year = d.getFullYear();
+    const month = pad(d.getMonth() + 1);
+    const day = pad(d.getDate());
+    const hours = pad(d.getHours());
+    const minutes = pad(d.getMinutes());
+    const seconds = pad(d.getSeconds());
+    const offsetMin = -d.getTimezoneOffset();
+    const sign = offsetMin >= 0 ? "+" : "-";
+    const offHours = pad(Math.floor(Math.abs(offsetMin) / 60));
+    const offMins = pad(Math.abs(offsetMin) % 60);
+    return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${sign}${offHours}:${offMins}`;
+  }
+
+  private _toTimeInput(iso: string): string {
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
   private async _finalize() {
     if (!this._session || this._busy) return;
     this._busy = true;
@@ -131,12 +216,12 @@ export class NightDetailView extends LitElement {
             ${formatTime(s.started_at)} — ${s.ended_at ? formatTime(s.ended_at) : "ongoing"}
           </div>
           <div class="timeline-section">
-            <timeline-bar
+            <sleep-tracker-timeline-bar
               .intervals=${s.intervals}
               .pulses=${s.pulses}
               .startedAt=${s.started_at}
               .endedAt=${s.ended_at}
-            ></timeline-bar>
+            ></sleep-tracker-timeline-bar>
           </div>
         </ha-card>
 
@@ -144,19 +229,34 @@ export class NightDetailView extends LitElement {
           ? html`
               <div class="section">
                 <h3>Statistics</h3>
-                <night-stats .stats=${s.stats}></night-stats>
+                <sleep-tracker-night-stats .stats=${s.stats}></sleep-tracker-night-stats>
               </div>
             `
           : nothing}
 
         <div class="section">
-          <h3>Pulses (${s.pulses.length})</h3>
+          <div class="section-header">
+            <h3>Pulses (${s.pulses.length})</h3>
+            ${editable && (s.undo_count ?? 0) > 0
+              ? html`
+                  <button
+                    class="undo-btn"
+                    ?disabled=${this._busy}
+                    @click=${this._undo}
+                    title="Undo last edit"
+                  >
+                    <ha-icon icon="mdi:undo"></ha-icon>
+                    Undo
+                  </button>
+                `
+              : nothing}
+          </div>
           ${s.pulses.length > 0
             ? html`
                 <div class="pulse-list">
                   ${s.pulses.map(
                     (p, i) => html`
-                      <div class="pulse-item">
+                      <div class="pulse-item ${this._editingTimeIndex === i ? "editing" : ""}">
                         <span
                           class="pulse-type ${p.pulse_type} ${editable ? "clickable" : ""}"
                           @click=${editable ? () => this._swapPulseType(i) : nothing}
@@ -164,18 +264,57 @@ export class NightDetailView extends LitElement {
                         >
                           ${p.pulse_type === "awake" ? "Woke up" : "Still awake"}
                         </span>
-                        <span class="pulse-time">${formatTime(p.timestamp)}</span>
-                        <span class="pulse-source">${p.source}</span>
-                        ${editable
+                        ${this._editingTimeIndex === i
                           ? html`
+                              <input
+                                type="time"
+                                class="time-input"
+                                .value=${this._toTimeInput(p.timestamp)}
+                                @keydown=${(e: KeyboardEvent) => {
+                                  if (e.key === "Enter") this._commitEditTime(i);
+                                  if (e.key === "Escape") this._cancelEditTime();
+                                }}
+                                autofocus
+                              />
                               <button
-                                class="delete-btn"
+                                class="edit-action save"
                                 ?disabled=${this._busy}
-                                @click=${() => this._deletePulse(i)}
-                                title="Delete pulse"
+                                @click=${() => this._commitEditTime(i)}
+                                title="Save"
+                              >
+                                <ha-icon icon="mdi:check"></ha-icon>
+                              </button>
+                              <button
+                                class="edit-action cancel"
+                                ?disabled=${this._busy}
+                                @click=${this._cancelEditTime}
+                                title="Cancel"
                               >
                                 <ha-icon icon="mdi:close"></ha-icon>
                               </button>
+                            `
+                          : html`
+                              <span
+                                class="pulse-time ${editable ? "clickable" : ""}"
+                                @click=${editable ? () => this._startEditTime(i) : nothing}
+                                title=${editable ? "Click to edit time" : ""}
+                              >${formatTime(p.timestamp)}</span>
+                            `}
+                        ${this._editingTimeIndex !== i
+                          ? html`
+                              <span class="pulse-source">${p.source}</span>
+                              ${editable
+                                ? html`
+                                    <button
+                                      class="delete-btn"
+                                      ?disabled=${this._busy}
+                                      @click=${() => this._deletePulse(i)}
+                                      title="Delete pulse"
+                                    >
+                                      <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                                    </button>
+                                  `
+                                : nothing}
                             `
                           : nothing}
                       </div>
@@ -256,6 +395,10 @@ export class NightDetailView extends LitElement {
         background: var(--card-background-color, white);
         border-radius: var(--ha-border-radius-md, 8px);
         border: 1px solid var(--divider-color, #e0e0e0);
+        position: relative;
+      }
+      .pulse-item.editing {
+        border-color: var(--primary-color, #03a9f4);
       }
       .pulse-type {
         font-size: var(--ha-font-size-s, 12px);
@@ -281,6 +424,81 @@ export class NightDetailView extends LitElement {
       .pulse-time {
         font-size: var(--ha-font-size-m, 14px);
         flex: 1;
+      }
+      .pulse-time.clickable {
+        cursor: pointer;
+        padding: 2px 6px;
+        border-radius: var(--ha-border-radius-sm, 4px);
+      }
+      .pulse-time.clickable:hover {
+        background: var(--secondary-background-color, #f5f5f5);
+      }
+      .time-input {
+        flex: 1;
+        font-size: var(--ha-font-size-m, 14px);
+        padding: 2px 6px;
+        border: 1px solid var(--primary-color, #03a9f4);
+        border-radius: var(--ha-border-radius-sm, 4px);
+        font-family: inherit;
+        background: var(--card-background-color, white);
+        color: var(--primary-text-color);
+      }
+      .edit-action {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        border: none;
+        border-radius: 50%;
+        cursor: pointer;
+        --mdc-icon-size: 18px;
+      }
+      .edit-action.save {
+        background: var(--sleep-color-success, #66bb6a);
+        color: white;
+      }
+      .edit-action.cancel {
+        background: transparent;
+        color: var(--secondary-text-color);
+      }
+      .edit-action.cancel:hover {
+        background: var(--secondary-background-color, #f5f5f5);
+      }
+      .edit-action:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: var(--ha-space-2, 8px);
+      }
+      .section-header h3 {
+        margin: 0;
+      }
+      .undo-btn {
+        display: flex;
+        align-items: center;
+        gap: var(--ha-space-1, 4px);
+        padding: var(--ha-space-1, 4px) var(--ha-space-3, 12px);
+        border: 1px solid var(--divider-color, #e0e0e0);
+        border-radius: var(--ha-border-radius-md, 8px);
+        background: var(--card-background-color, white);
+        color: var(--primary-text-color);
+        font-size: var(--ha-font-size-s, 12px);
+        cursor: pointer;
+        font-family: inherit;
+        --mdc-icon-size: 16px;
+      }
+      .undo-btn:hover {
+        background: var(--secondary-background-color, #f5f5f5);
+      }
+      .undo-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
       }
       .pulse-source {
         font-size: var(--ha-font-size-s, 12px);

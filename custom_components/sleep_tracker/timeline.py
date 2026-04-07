@@ -5,7 +5,7 @@ No Home Assistant dependencies — can be tested independently.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from .models import SleepPulse, TimelineInterval
 
@@ -32,61 +32,73 @@ def compute_intervals(
 
     Algorithm:
     - Session starts in AWAKE state (user just lay down).
-    - Pulses within sleep_onset_minutes from start are ignored
-      (the user is still settling in, phone activity is expected).
-    - After fall_asleep_latency, user transitions to ASLEEP.
-    - An "awake" pulse means the user woke up (ASLEEP -> AWAKE).
-      The fall-asleep timer resets.
-    - A "still_awake" pulse confirms the user is still awake,
-      resetting the fall-asleep timer.
+    - Initial fall-asleep time = start + max(latency, onset). Onset acts
+      as a minimum settling period; latency is the per-event "back to sleep"
+      duration.
+    - Each pulse extends the fall-asleep timer to max(current, pulse + latency).
+      The timer is monotonic — events can only push it later, never earlier.
+    - An "awake" pulse on an asleep state transitions back to awake.
+    - A "still_awake" pulse keeps the awake state continuous (no phantom sleep).
+    - Within an awake window (sleep_at > pulse_time), an "awake" pulse behaves
+      identically to "still_awake" — just extends the timer.
     - Session end means the user is AWAKE (getting up).
     """
     start_dt = _parse(started_at)
-    end_dt = _parse(ended_at) if ended_at else (now or datetime.now(timezone.utc))
+    if ended_at:
+        end_dt = _parse(ended_at)
+    elif now is not None:
+        end_dt = now
+    else:
+        # Fall back to "now" in the same TZ as start_dt for an active session
+        from datetime import timezone as _tz
+        end_dt = datetime.now(start_dt.tzinfo or _tz.utc)
     latency = timedelta(minutes=fall_asleep_latency_minutes)
-    onset_cutoff = start_dt + timedelta(minutes=sleep_onset_minutes)
+    onset = timedelta(minutes=sleep_onset_minutes)
 
-    sorted_pulses = [
-        p for p in sorted(pulses, key=lambda p: p.timestamp)
-        if _parse(p.timestamp) >= onset_cutoff
-    ]
+    sorted_pulses = sorted(pulses, key=lambda p: p.timestamp)
 
     intervals: list[TimelineInterval] = []
     state = "awake"
     segment_start = start_dt
-    sleep_at = start_dt + latency  # when we'll fall asleep if undisturbed
+    # Onset is a minimum initial settling period; never less than latency
+    sleep_at = start_dt + max(latency, onset)
 
     for pulse in sorted_pulses:
         pulse_time = _parse(pulse.timestamp)
         if pulse_time >= end_dt:
             break
 
+        if pulse.pulse_type == "still_awake":
+            # User confirms they have been awake all along since the last event.
+            # Do NOT split the current awake segment with a phantom asleep period.
+            if state == "asleep":
+                # Edge case: algorithm thought asleep, user says they were awake.
+                # Retroactively close the asleep segment.
+                intervals.append(
+                    TimelineInterval(_fmt(segment_start), _fmt(pulse_time), "asleep")
+                )
+                segment_start = pulse_time
+                state = "awake"
+            # state == "awake": just extend by resetting the sleep timer
+            sleep_at = pulse_time + latency
+            continue
+
+        # pulse.pulse_type == "awake"
         if state == "awake":
             if sleep_at <= pulse_time:
-                # We fell asleep at sleep_at, and this pulse wakes us (or confirms)
+                # We fell asleep at sleep_at; this pulse wakes us
                 intervals.append(
                     TimelineInterval(_fmt(segment_start), _fmt(sleep_at), "awake")
                 )
-                if pulse.pulse_type == "awake":
-                    # Slept from sleep_at until this pulse
-                    intervals.append(
-                        TimelineInterval(_fmt(sleep_at), _fmt(pulse_time), "asleep")
-                    )
-                    segment_start = pulse_time
-                    state = "awake"
-                elif pulse.pulse_type == "still_awake":
-                    # They say still awake, but we thought they slept — they woke up
-                    intervals.append(
-                        TimelineInterval(_fmt(sleep_at), _fmt(pulse_time), "asleep")
-                    )
-                    segment_start = pulse_time
-                    state = "awake"
-                sleep_at = pulse_time + latency
-            else:
-                # Still awake, just reset the sleep timer
-                sleep_at = pulse_time + latency
+                intervals.append(
+                    TimelineInterval(_fmt(sleep_at), _fmt(pulse_time), "asleep")
+                )
+                segment_start = pulse_time
+                state = "awake"
+            # else: still in latency window — treat as still_awake (just extend)
+            sleep_at = pulse_time + latency
         elif state == "asleep":
-            # Any pulse means we're awake now
+            # Asleep -> awake transition
             intervals.append(
                 TimelineInterval(_fmt(segment_start), _fmt(pulse_time), "asleep")
             )
@@ -135,7 +147,8 @@ def compute_stats(
     - total_sleep_minutes: total time asleep
     - total_awake_minutes: total time awake
     - sleep_efficiency: ratio of sleep to total session time
-    - awakenings: count of awake intervals after the initial one
+    - awakenings: count of awake intervals between sleep periods
+      (excludes the initial settling and the final wake-up at session end)
     - time_to_fall_asleep_minutes: duration of first awake interval
     """
     start_dt = _parse(started_at)
@@ -144,21 +157,32 @@ def compute_stats(
 
     sleep_minutes = 0.0
     awake_minutes = 0.0
-    awakenings = 0
     time_to_fall_asleep = 0.0
-    first_awake_seen = False
 
-    for interval in intervals:
+    # Identify awake intervals; the first and last are excluded from awakenings.
+    awake_indices: list[int] = []
+    for idx, interval in enumerate(intervals):
         duration = (_parse(interval.end) - _parse(interval.start)).total_seconds() / 60
         if interval.state == "asleep":
             sleep_minutes += duration
         else:
             awake_minutes += duration
-            if not first_awake_seen:
-                time_to_fall_asleep = duration
-                first_awake_seen = True
-            else:
-                awakenings += 1
+            awake_indices.append(idx)
+
+    if awake_indices:
+        first_idx = awake_indices[0]
+        first_dur = (
+            _parse(intervals[first_idx].end) - _parse(intervals[first_idx].start)
+        ).total_seconds() / 60
+        time_to_fall_asleep = first_dur
+
+    # Awakenings = awake intervals strictly between two asleep intervals
+    awakenings = 0
+    for idx in awake_indices:
+        prev_is_asleep = idx > 0 and intervals[idx - 1].state == "asleep"
+        next_is_asleep = idx < len(intervals) - 1 and intervals[idx + 1].state == "asleep"
+        if prev_is_asleep and next_is_asleep:
+            awakenings += 1
 
     efficiency = sleep_minutes / total_minutes if total_minutes > 0 else 0.0
 

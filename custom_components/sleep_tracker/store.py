@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.storage import Store
+from homeassistant.util import dt as dt_util
 
 from .const import STORAGE_KEY, STORAGE_VERSION
 from .models import SleepSession, UserConfig
@@ -128,19 +129,22 @@ class SleepTrackerStore:
 
     def purge_old_sessions(self, user_id: str, retention_days: int) -> int:
         """Delete sessions older than retention period. Returns count deleted."""
-        cutoff = datetime.now(timezone.utc).isoformat()
-        from datetime import timedelta
+        cutoff_dt = dt_util.now() - timedelta(days=retention_days)
 
-        cutoff_dt = datetime.now(timezone.utc) - timedelta(days=retention_days)
-        cutoff = cutoff_dt.isoformat()
+        to_remove: list[str] = []
+        for sid, s in self.sessions.items():
+            if s.user_id != user_id or s.is_active:
+                continue
+            try:
+                started = datetime.fromisoformat(s.started_at)
+            except ValueError:
+                continue
+            # Compare as aware datetimes (handles mixed UTC/local timestamps)
+            if started.tzinfo is None:
+                started = started.replace(tzinfo=cutoff_dt.tzinfo)
+            if started < cutoff_dt:
+                to_remove.append(sid)
 
-        to_remove = [
-            sid
-            for sid, s in self.sessions.items()
-            if s.user_id == user_id
-            and not s.is_active
-            and s.started_at < cutoff
-        ]
         for sid in to_remove:
             del self.sessions[sid]
         if to_remove:

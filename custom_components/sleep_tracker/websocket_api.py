@@ -28,6 +28,8 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_get_stats)
     websocket_api.async_register_command(hass, ws_delete_pulse)
     websocket_api.async_register_command(hass, ws_swap_pulse_type)
+    websocket_api.async_register_command(hass, ws_update_pulse)
+    websocket_api.async_register_command(hass, ws_undo_edit)
     websocket_api.async_register_command(hass, ws_finalize_session)
     websocket_api.async_register_command(hass, ws_export_session)
     websocket_api.async_register_command(hass, ws_subscribe)
@@ -297,6 +299,67 @@ async def ws_swap_pulse_type(
         connection.send_result(msg["id"], session)
     except ValueError as err:
         connection.send_error(msg["id"], "swap_failed", str(err))
+
+
+# --- Update Pulse ---
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "sleep_tracker/update_pulse",
+        vol.Required("session_id"): str,
+        vol.Required("pulse_index"): int,
+        vol.Optional("timestamp"): str,
+        vol.Optional("pulse_type"): vol.In([PULSE_AWAKE, PULSE_STILL_AWAKE]),
+    }
+)
+@websocket_api.async_response
+async def ws_update_pulse(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Update a pulse's timestamp and/or type."""
+    coordinator = _get_data(hass)["coordinator"]
+    user_id = connection.user.id
+
+    try:
+        session = await coordinator.async_update_pulse(
+            user_id,
+            msg["session_id"],
+            msg["pulse_index"],
+            timestamp=msg.get("timestamp"),
+            pulse_type=msg.get("pulse_type"),
+        )
+        connection.send_result(msg["id"], session)
+    except ValueError as err:
+        connection.send_error(msg["id"], "update_failed", str(err))
+
+
+# --- Undo Edit ---
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "sleep_tracker/undo_edit",
+        vol.Required("session_id"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_undo_edit(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Undo the most recent edit on a session."""
+    coordinator = _get_data(hass)["coordinator"]
+    user_id = connection.user.id
+
+    # Verify ownership
+    s = coordinator.store.get_session(msg["session_id"])
+    if s is None or s.user_id != user_id:
+        connection.send_error(msg["id"], "not_found", "Session not found")
+        return
+
+    try:
+        session = await coordinator.async_undo_edit(user_id, msg["session_id"])
+        connection.send_result(msg["id"], session)
+    except ValueError as err:
+        connection.send_error(msg["id"], "undo_failed", str(err))
 
 
 # --- Finalize Session ---

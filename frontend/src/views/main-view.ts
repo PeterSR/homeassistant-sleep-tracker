@@ -10,7 +10,7 @@ import "../components/timeline-bar";
 import "../components/pulse-button";
 import "../components/session-card";
 
-@customElement("main-view")
+@customElement("sleep-tracker-main-view")
 export class MainView extends LitElement {
   @property({ attribute: false }) hass!: HomeAssistant;
   @property({ attribute: false }) api!: SleepTrackerApi;
@@ -70,9 +70,19 @@ export class MainView extends LitElement {
     );
   }
 
+  private _requestRefresh() {
+    this.dispatchEvent(
+      new CustomEvent("sleep-tracker-state-update", {
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
+
   private async _startSleep() {
     try {
       await this.api.startSleep();
+      this._requestRefresh();
     } catch (err) {
       console.error("Failed to start sleep:", err);
     }
@@ -81,6 +91,7 @@ export class MainView extends LitElement {
   private async _stopSleep() {
     try {
       await this.api.stopSleep();
+      this._requestRefresh();
     } catch (err) {
       console.error("Failed to stop sleep:", err);
     }
@@ -90,7 +101,7 @@ export class MainView extends LitElement {
     // Not set up
     if (!this.userState.config) {
       return html`
-        <setup-prompt .hass=${this.hass} .api=${this.api}></setup-prompt>
+        <sleep-tracker-setup-prompt .hass=${this.hass} .api=${this.api}></sleep-tracker-setup-prompt>
       `;
     }
 
@@ -110,12 +121,12 @@ export class MainView extends LitElement {
             </div>
 
             <div class="timeline-section">
-              <timeline-bar
+              <sleep-tracker-timeline-bar
                 .intervals=${active.intervals}
                 .pulses=${active.pulses}
                 .startedAt=${active.started_at}
                 .endedAt=${null}
-              ></timeline-bar>
+              ></sleep-tracker-timeline-bar>
             </div>
 
             ${active.pulses.length > 0
@@ -126,7 +137,7 @@ export class MainView extends LitElement {
                 `
               : nothing}
 
-            <pulse-button .api=${this.api}></pulse-button>
+            <sleep-tracker-pulse-button .api=${this.api}></sleep-tracker-pulse-button>
 
             <div class="stop-section">
               <button class="big-button stop" @click=${this._stopSleep}>
@@ -173,7 +184,7 @@ export class MainView extends LitElement {
           ? html`
               <div class="section">
                 <h3>Last Night</h3>
-                <session-card .session=${last}></session-card>
+                <sleep-tracker-session-card .session=${last}></sleep-tracker-session-card>
               </div>
             `
           : html`

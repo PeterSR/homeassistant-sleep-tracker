@@ -28,7 +28,7 @@ interface StatsData {
   };
 }
 
-@customElement("stats-view")
+@customElement("sleep-tracker-stats-view")
 export class StatsView extends LitElement {
   @property({ attribute: false }) hass!: HomeAssistant;
   @property({ attribute: false }) api!: SleepTrackerApi;

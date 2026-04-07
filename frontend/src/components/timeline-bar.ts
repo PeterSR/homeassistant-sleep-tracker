@@ -4,7 +4,7 @@ import type { TimelineInterval, SleepPulse } from "../types";
 import { tokens } from "../styles";
 import { formatTime } from "../utils";
 
-@customElement("timeline-bar")
+@customElement("sleep-tracker-timeline-bar")
 export class TimelineBar extends LitElement {
   @property({ attribute: false }) intervals: TimelineInterval[] = [];
   @property({ attribute: false }) pulses: SleepPulse[] = [];

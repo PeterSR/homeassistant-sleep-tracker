@@ -29,6 +29,7 @@ export class SleepTrackerPanel extends LitElement {
   connectedCallback(): void {
     super.connectedCallback();
     window.addEventListener("popstate", this._onPopState);
+    this.addEventListener("sleep-tracker-state-update", this._refreshState as EventListener);
     this._lastConnection = undefined;
     if (customElements.get("ha-card")) {
       this._haReady = true;
@@ -42,8 +43,18 @@ export class SleepTrackerPanel extends LitElement {
   disconnectedCallback(): void {
     super.disconnectedCallback();
     window.removeEventListener("popstate", this._onPopState);
+    this.removeEventListener("sleep-tracker-state-update", this._refreshState as EventListener);
     this._unsubscribe();
   }
+
+  private _refreshState = async (): Promise<void> => {
+    if (!this._api) return;
+    try {
+      this._userState = await this._api.getState();
+    } catch (e) {
+      console.error("Failed to refresh state:", e);
+    }
+  };
 
   willUpdate(changed: PropertyValues): void {
     if (changed.has("hass") && this.hass) {
@@ -150,7 +161,7 @@ export class SleepTrackerPanel extends LitElement {
     if (nightMatch) {
       const sessionId = decodeURIComponent(nightMatch[1]);
       return html`
-        <night-detail-view
+        <sleep-tracker-night-detail-view
           .hass=${this.hass}
           .api=${this._api}
           .userState=${this._userState}
@@ -158,58 +169,58 @@ export class SleepTrackerPanel extends LitElement {
           .narrow=${this.narrow}
           @navigate=${this._onNavigate}
           @set-toolbar=${this._onSetToolbar}
-        ></night-detail-view>
+        ></sleep-tracker-night-detail-view>
       `;
     }
 
     if (this._path === "/stats") {
       return html`
-        <stats-view
+        <sleep-tracker-stats-view
           .hass=${this.hass}
           .api=${this._api}
           .userState=${this._userState}
           .narrow=${this.narrow}
           @navigate=${this._onNavigate}
           @set-toolbar=${this._onSetToolbar}
-        ></stats-view>
+        ></sleep-tracker-stats-view>
       `;
     }
 
     if (this._path === "/history") {
       return html`
-        <history-view
+        <sleep-tracker-history-view
           .hass=${this.hass}
           .api=${this._api}
           .userState=${this._userState}
           .narrow=${this.narrow}
           @navigate=${this._onNavigate}
           @set-toolbar=${this._onSetToolbar}
-        ></history-view>
+        ></sleep-tracker-history-view>
       `;
     }
 
     if (this._path === "/settings") {
       return html`
-        <settings-view
+        <sleep-tracker-settings-view
           .hass=${this.hass}
           .api=${this._api}
           .userState=${this._userState}
           .narrow=${this.narrow}
           @navigate=${this._onNavigate}
           @set-toolbar=${this._onSetToolbar}
-        ></settings-view>
+        ></sleep-tracker-settings-view>
       `;
     }
 
     return html`
-      <main-view
+      <sleep-tracker-main-view
         .hass=${this.hass}
         .api=${this._api}
         .userState=${this._userState}
         .narrow=${this.narrow}
         @navigate=${this._onNavigate}
         @set-toolbar=${this._onSetToolbar}
-      ></main-view>
+      ></sleep-tracker-main-view>
     `;
   }
 

@@ -4,7 +4,7 @@ import type { SleepTrackerApi } from "../api";
 import type { HomeAssistant } from "../types";
 import { tokens, emptyStateStyles } from "../styles";
 
-@customElement("setup-prompt")
+@customElement("sleep-tracker-setup-prompt")
 export class SetupPrompt extends LitElement {
   @property({ attribute: false }) hass!: HomeAssistant;
   @property({ attribute: false }) api!: SleepTrackerApi;

@@ -4,7 +4,7 @@ import type { SessionStats } from "../types";
 import { tokens, statStyles } from "../styles";
 import { formatDuration, efficiencyPercent } from "../utils";
 
-@customElement("night-stats")
+@customElement("sleep-tracker-night-stats")
 export class NightStats extends LitElement {
   @property({ attribute: false }) stats: SessionStats | null = null;
 
