@@ -10,10 +10,13 @@ interface DailyStat {
   date: string;
   started_at: string;
   ended_at: string;
+  time_in_bed_minutes: number;
+  sleep_period_minutes: number;
   total_sleep_minutes: number;
   sleep_efficiency: number;
   awakenings: number;
   time_to_fall_asleep_minutes: number;
+  time_before_getting_up_minutes: number;
 }
 
 interface StatsData {
@@ -22,9 +25,11 @@ interface StatsData {
   daily: DailyStat[];
   averages: {
     total_sleep_minutes: number;
+    sleep_period_minutes: number;
     sleep_efficiency: number;
     awakenings: number;
     time_to_fall_asleep_minutes: number;
+    time_before_getting_up_minutes: number;
   };
 }
 
@@ -128,6 +133,14 @@ export class StatsView extends LitElement {
             <div class="stat">
               <div class="stat-value">${formatDuration(avg.time_to_fall_asleep_minutes)}</div>
               <div class="stat-label">Avg Time to Sleep</div>
+            </div>
+            <div class="stat">
+              <div class="stat-value">${formatDuration(avg.sleep_period_minutes)}</div>
+              <div class="stat-label">Avg Sleep Period</div>
+            </div>
+            <div class="stat">
+              <div class="stat-value">${formatDuration(avg.time_before_getting_up_minutes)}</div>
+              <div class="stat-label">Avg Awake Before Up</div>
             </div>
           </div>
         </ha-card>

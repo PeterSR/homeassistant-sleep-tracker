@@ -1,13 +1,13 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import type { TimelineInterval, SleepPulse } from "../types";
+import type { SleepPhase, SleepEvent } from "../types";
 import { tokens } from "../styles";
 import { formatTime } from "../utils";
 
 @customElement("sleep-tracker-timeline-bar")
 export class TimelineBar extends LitElement {
-  @property({ attribute: false }) intervals: TimelineInterval[] = [];
-  @property({ attribute: false }) pulses: SleepPulse[] = [];
+  @property({ attribute: false }) phases: SleepPhase[] = [];
+  @property({ attribute: false }) events: SleepEvent[] = [];
   @property() startedAt = "";
   @property() endedAt: string | null = null;
   @property({ type: Boolean }) compact = false;
@@ -28,7 +28,7 @@ export class TimelineBar extends LitElement {
   }
 
   render() {
-    if (!this.intervals.length || !this.startedAt) return nothing;
+    if (!this.phases.length || !this.startedAt) return nothing;
     const barHeight = this.compact ? 16 : 32;
     const showLabels = !this.compact;
 
@@ -43,25 +43,25 @@ export class TimelineBar extends LitElement {
             `
           : nothing}
         <div class="bar" style="height: ${barHeight}px">
-          ${this.intervals.map((interval) => {
-            const left = this._pct(interval.start);
-            const right = this._pct(interval.end);
+          ${this.phases.map((phase) => {
+            const left = this._pct(phase.start);
+            const right = this._pct(phase.end);
             const width = right - left;
             return html`
               <div
-                class="segment ${interval.state}"
+                class="segment ${phase.state}"
                 style="left: ${left}%; width: ${width}%"
               ></div>
             `;
           })}
           ${!this.compact
-            ? this.pulses.map((pulse) => {
-                const pos = this._pct(pulse.timestamp);
+            ? this.events.map((event) => {
+                const pos = this._pct(event.timestamp);
                 return html`
                   <div
-                    class="pulse-marker ${pulse.pulse_type}"
+                    class="event-marker ${event.event_type}"
                     style="left: ${pos}%"
-                    title="${pulse.pulse_type} — ${formatTime(pulse.timestamp)}"
+                    title="${event.event_type} — ${formatTime(event.timestamp)}"
                   ></div>
                 `;
               })
@@ -107,7 +107,7 @@ export class TimelineBar extends LitElement {
         background: var(--sleep-color-awake, #ef5350);
         opacity: 0.7;
       }
-      .pulse-marker {
+      .event-marker {
         position: absolute;
         top: -3px;
         width: 2px;
@@ -115,12 +115,15 @@ export class TimelineBar extends LitElement {
         transform: translateX(-50%);
         z-index: 1;
       }
-      .pulse-marker.awake {
+      .event-marker.awake {
         background: var(--sleep-color-pulse, #ff9800);
       }
-      .pulse-marker.still_awake {
+      .event-marker.still_awake {
         background: var(--sleep-color-pulse, #ff9800);
         opacity: 0.6;
+      }
+      .event-marker.fell_asleep {
+        background: var(--sleep-color-asleep, #42a5f5);
       }
       .now-marker {
         position: absolute;
@@ -131,9 +134,9 @@ export class TimelineBar extends LitElement {
         transform: translateX(-50%);
         z-index: 2;
         border-radius: 1px;
-        animation: pulse-glow 2s ease-in-out infinite;
+        animation: glow-pulse 2s ease-in-out infinite;
       }
-      @keyframes pulse-glow {
+      @keyframes glow-pulse {
         0%,
         100% {
           opacity: 1;

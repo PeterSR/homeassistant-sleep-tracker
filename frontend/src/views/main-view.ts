@@ -122,17 +122,17 @@ export class MainView extends LitElement {
 
             <div class="timeline-section">
               <sleep-tracker-timeline-bar
-                .intervals=${active.intervals}
-                .pulses=${active.pulses}
+                .phases=${active.phases}
+                .events=${active.events}
                 .startedAt=${active.started_at}
                 .endedAt=${null}
               ></sleep-tracker-timeline-bar>
             </div>
 
-            ${active.pulses.length > 0
+            ${active.events.length > 0
               ? html`
-                  <div class="pulse-count">
-                    ${active.pulses.length} pulse${active.pulses.length !== 1 ? "s" : ""} recorded
+                  <div class="event-count">
+                    ${active.events.length} event${active.events.length !== 1 ? "s" : ""} recorded
                   </div>
                 `
               : nothing}
@@ -230,7 +230,7 @@ export class MainView extends LitElement {
       .timeline-section {
         margin: var(--ha-space-4, 16px) 0;
       }
-      .pulse-count {
+      .event-count {
         font-size: var(--ha-font-size-s, 12px);
         color: var(--secondary-text-color);
         text-align: center;

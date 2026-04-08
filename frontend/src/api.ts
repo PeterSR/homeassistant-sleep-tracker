@@ -1,4 +1,4 @@
-import type { HomeAssistant, SleepSession, UserConfig, UserState } from "./types";
+import type { EventType, HomeAssistant, SleepSession, UserConfig, UserState } from "./types";
 
 export class SleepTrackerApi {
   constructor(private hass: HomeAssistant) {}
@@ -33,10 +33,17 @@ export class SleepTrackerApi {
     return this.hass.callWS({ type: "sleep_tracker/stop_sleep" });
   }
 
-  async pulse(pulse_type: "awake" | "still_awake"): Promise<SleepSession> {
+  async reopenSession(session_id: string): Promise<SleepSession> {
     return this.hass.callWS({
-      type: "sleep_tracker/pulse",
-      pulse_type,
+      type: "sleep_tracker/reopen_session",
+      session_id,
+    });
+  }
+
+  async event(event_type: EventType): Promise<SleepSession> {
+    return this.hass.callWS({
+      type: "sleep_tracker/event",
+      event_type,
     });
   }
 
@@ -54,32 +61,39 @@ export class SleepTrackerApi {
     });
   }
 
-  async deletePulse(session_id: string, pulse_index: number): Promise<SleepSession> {
+  async deletePhase(session_id: string, phase_index: number): Promise<SleepSession> {
     return this.hass.callWS({
-      type: "sleep_tracker/delete_pulse",
+      type: "sleep_tracker/delete_phase",
       session_id,
-      pulse_index,
+      phase_index,
     });
   }
 
-  async swapPulseType(session_id: string, pulse_index: number): Promise<SleepSession> {
-    return this.hass.callWS({
-      type: "sleep_tracker/swap_pulse_type",
-      session_id,
-      pulse_index,
-    });
-  }
-
-  async updatePulse(
+  async splitPhase(
     session_id: string,
-    pulse_index: number,
-    updates: { timestamp?: string; pulse_type?: "awake" | "still_awake" }
+    phase_index: number,
+    at_timestamp: string,
+    wedge_minutes = 1.0
   ): Promise<SleepSession> {
     return this.hass.callWS({
-      type: "sleep_tracker/update_pulse",
+      type: "sleep_tracker/split_phase",
       session_id,
-      pulse_index,
-      ...updates,
+      phase_index,
+      at_timestamp,
+      wedge_minutes,
+    });
+  }
+
+  async adjustPhaseBoundary(
+    session_id: string,
+    after_index: number,
+    new_time: string
+  ): Promise<SleepSession> {
+    return this.hass.callWS({
+      type: "sleep_tracker/adjust_phase_boundary",
+      session_id,
+      after_index,
+      new_time,
     });
   }
 

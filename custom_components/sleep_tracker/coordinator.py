@@ -1,7 +1,14 @@
 """Coordinator for Sleep Tracker integration.
 
-Manages sleep sessions, pulse processing, entity notification,
-and state queries. Entirely event-driven (no tick loop).
+Manages sleep sessions, event processing, phase materialization, entity
+notification, and state queries. Entirely event-driven (no tick loop).
+
+Model:
+- Events are raw immutable signals (user button, sensor, etc.) collected
+  during an active session.
+- Phases (awake/asleep intervals) are materialized from events on session
+  stop and stored. After stop, phases are edited directly; events become
+  read-only history.
 """
 
 from __future__ import annotations
@@ -9,16 +16,27 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timedelta
-
-from homeassistant.util import dt as dt_util
 from typing import Any, Callable
 
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.util import dt as dt_util
 
-from .const import PULSE_AWAKE, PULSE_STILL_AWAKE, PULSE_TYPES
-from .models import SleepPulse, SleepSession
+from .const import (
+    EVENT_AWAKE,
+    EVENT_FELL_ASLEEP,
+    EVENT_STILL_AWAKE,
+    EVENT_TYPES,
+    PHASE_AWAKE,
+)
+from .models import SleepEvent, SleepPhase, SleepSession
+from .phases import (
+    adjust_phase_boundary,
+    compute_stats,
+    delete_phase,
+    materialize_phases,
+    split_phase,
+)
 from .store import SleepTrackerStore
-from .timeline import compute_intervals, compute_stats
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,8 +49,8 @@ class SleepTrackerCoordinator:
         self.store = store
         self._listeners: list[Callable[[], None]] = []
         self._user_listeners: dict[str, list[Callable[[], None]]] = {}
-        # In-memory edit history for undo: session_id -> list of pulse list snapshots
-        self._edit_history: dict[str, list[list[SleepPulse]]] = {}
+        # In-memory edit history for undo: session_id -> list of phase snapshots
+        self._edit_history: dict[str, list[list[SleepPhase]]] = {}
         self._max_history = 30
 
     # --- Listener management ---
@@ -86,7 +104,6 @@ class SleepTrackerCoordinator:
         )
         self.store.set_user_config(config)
 
-        # Create entities for this user
         await self._async_create_user_entities(user_id)
 
         self._notify_listeners(user_id)
@@ -149,7 +166,6 @@ class SleepTrackerCoordinator:
         )
         self.store.add_session(session)
 
-        # Purge old sessions
         purged = self.store.purge_old_sessions(user_id, config.retention_days)
         if purged:
             _LOGGER.debug("Purged %d old sessions for user %s", purged, user_id)
@@ -166,193 +182,134 @@ class SleepTrackerCoordinator:
     async def async_stop_sleep(
         self, user_id: str, source: str = "manual"
     ) -> dict:
-        """Stop the active sleep session. Session remains editable until finalized."""
+        """Stop the active sleep session. Materializes phases and stores them."""
         session = self.store.get_active_session(user_id)
         if session is None:
             raise ValueError(f"User {user_id} has no active session")
 
         ended_at = dt_util.now().isoformat()
-        self.store.update_session(session.session_id, ended_at=ended_at)
+        params = self._get_user_timeline_params(user_id)
+        materialized = materialize_phases(
+            session.started_at, ended_at, session.events, **params
+        )
+        self.store.update_session(
+            session.session_id, ended_at=ended_at, phases=materialized
+        )
 
         self._notify_listeners(user_id)
         self.hass.bus.async_fire(
             "sleep_tracker_session_ended",
-            {
-                "user_id": user_id,
-                "session_id": session.session_id,
-            },
+            {"user_id": user_id, "session_id": session.session_id},
         )
 
         _LOGGER.info("Sleep session ended for user %s (source: %s)", user_id, source)
         return self._session_to_dict(session)
 
-    async def async_pulse(
-        self, user_id: str, pulse_type: str, source: str = "manual"
-    ) -> dict:
-        """Record a pulse in the active session.
+    async def async_reopen_session(self, user_id: str, session_id: str) -> dict:
+        """Reopen a stopped session by clearing ended_at and phases.
 
-        If the user is currently in the awake state (initial onset/latency window
-        or still within a previous awake window), an "awake" pulse is auto-demoted
-        to "still_awake" — you can't wake up if you haven't fallen asleep yet.
+        Allows new events to be appended again. Errors if the session is
+        finalized.
         """
-        if pulse_type not in PULSE_TYPES:
-            raise ValueError(f"Invalid pulse type: {pulse_type}")
+        session = self.store.get_session(session_id)
+        if session is None or session.user_id != user_id:
+            raise ValueError("Session not found")
+        if session.is_active:
+            raise ValueError("Session is already active")
+        if session.finalized:
+            raise ValueError("Cannot reopen a finalized session")
+
+        # Block reopen if there's already an active session for this user
+        active = self.store.get_active_session(user_id)
+        if active is not None:
+            raise ValueError(
+                f"User {user_id} already has an active session: {active.session_id}"
+            )
+
+        self.store.update_session(session_id, ended_at=None, phases=None)
+        # Clear any phase edit history for this session
+        self._edit_history.pop(session_id, None)
+
+        self._notify_listeners(user_id)
+        _LOGGER.info("Sleep session %s reopened for user %s", session_id, user_id)
+        return self._session_to_dict(session)
+
+    async def async_event(
+        self, user_id: str, event_type: str, source: str = "manual"
+    ) -> dict:
+        """Record an event in the active session.
+
+        For "awake" events: if the user is currently in the awake state (still
+        in the initial onset/latency window or in a previous awake window), the
+        event is auto-demoted to "still_awake" — you can't wake up if you
+        haven't fallen asleep yet.
+
+        Stopped sessions reject events.
+        """
+        if event_type not in EVENT_TYPES:
+            raise ValueError(f"Invalid event type: {event_type}")
 
         session = self.store.get_active_session(user_id)
         if session is None:
-            raise ValueError(f"User {user_id} has no active session")
+            raise ValueError(
+                f"User {user_id} has no active session — events are rejected on stopped sessions"
+            )
 
         now = dt_util.now()
 
         # Auto-demote awake -> still_awake when currently awake
-        if pulse_type == PULSE_AWAKE:
+        if event_type == EVENT_AWAKE:
             params = self._get_user_timeline_params(user_id)
-            intervals = compute_intervals(
-                session.started_at, None, session.pulses, **params, now=now
+            phases = materialize_phases(
+                session.started_at, None, session.events, **params, now=now
             )
-            if intervals and intervals[-1].state == "awake":
-                pulse_type = PULSE_STILL_AWAKE
+            if phases and phases[-1].state == PHASE_AWAKE:
+                event_type = EVENT_STILL_AWAKE
                 _LOGGER.debug(
-                    "Auto-demoted awake pulse to still_awake for user %s", user_id
+                    "Auto-demoted awake event to still_awake for user %s", user_id
                 )
 
-        pulse = SleepPulse(
+        event = SleepEvent(
             timestamp=now.isoformat(),
-            pulse_type=pulse_type,
+            event_type=event_type,
             source=source,
         )
-        session.pulses.append(pulse)
-        self.store.update_session(session.session_id, pulses=session.pulses)
+        session.events.append(event)
+        self.store.update_session(session.session_id, events=session.events)
 
         self._notify_listeners(user_id)
         self.hass.bus.async_fire(
-            "sleep_tracker_pulse",
+            "sleep_tracker_event",
             {
                 "user_id": user_id,
                 "session_id": session.session_id,
-                "pulse_type": pulse_type,
+                "event_type": event_type,
                 "source": source,
             },
         )
 
         _LOGGER.debug(
-            "Pulse %s recorded for user %s (source: %s)",
-            pulse_type, user_id, source,
+            "Event %s recorded for user %s (source: %s)",
+            event_type, user_id, source,
         )
         return self._session_to_dict(session)
 
-    # --- Pulse editing (only for non-finalized, completed sessions) ---
+    # --- Phase editing (only for stopped, non-finalized sessions) ---
 
     def _push_edit_history(self, session: SleepSession) -> None:
-        """Snapshot current pulses for undo."""
+        """Snapshot current phases for undo."""
+        if session.phases is None:
+            return
         history = self._edit_history.setdefault(session.session_id, [])
-        snapshot = [
-            SleepPulse(p.timestamp, p.pulse_type, p.source) for p in session.pulses
-        ]
+        snapshot = [SleepPhase(p.start, p.end, p.state) for p in session.phases]
         history.append(snapshot)
         if len(history) > self._max_history:
             history.pop(0)
 
-    async def async_delete_pulse(
-        self, user_id: str, session_id: str, pulse_index: int
-    ) -> dict:
-        """Delete a pulse from a session by index."""
-        session = self._get_editable_session(user_id, session_id)
-
-        if pulse_index < 0 or pulse_index >= len(session.pulses):
-            raise ValueError(f"Invalid pulse index: {pulse_index}")
-
-        self._push_edit_history(session)
-        session.pulses.pop(pulse_index)
-        self.store.update_session(session_id, pulses=session.pulses)
-        self._notify_listeners(user_id)
-        return self._session_to_dict(session)
-
-    async def async_swap_pulse_type(
-        self, user_id: str, session_id: str, pulse_index: int
-    ) -> dict:
-        """Swap a pulse's type between awake and still_awake."""
-        session = self._get_editable_session(user_id, session_id)
-
-        if pulse_index < 0 or pulse_index >= len(session.pulses):
-            raise ValueError(f"Invalid pulse index: {pulse_index}")
-
-        self._push_edit_history(session)
-        pulse = session.pulses[pulse_index]
-        pulse.pulse_type = (
-            PULSE_STILL_AWAKE if pulse.pulse_type == PULSE_AWAKE else PULSE_AWAKE
-        )
-        self.store.update_session(session_id, pulses=session.pulses)
-        self._notify_listeners(user_id)
-        return self._session_to_dict(session)
-
-    async def async_update_pulse(
-        self,
-        user_id: str,
-        session_id: str,
-        pulse_index: int,
-        timestamp: str | None = None,
-        pulse_type: str | None = None,
-    ) -> dict:
-        """Update a pulse's timestamp and/or type."""
-        session = self._get_editable_session(user_id, session_id)
-
-        if pulse_index < 0 or pulse_index >= len(session.pulses):
-            raise ValueError(f"Invalid pulse index: {pulse_index}")
-
-        if pulse_type is not None and pulse_type not in PULSE_TYPES:
-            raise ValueError(f"Invalid pulse type: {pulse_type}")
-
-        if timestamp is not None:
-            # Validate timestamp is within session bounds
-            try:
-                pt = datetime.fromisoformat(timestamp)
-            except ValueError as err:
-                raise ValueError(f"Invalid timestamp: {timestamp}") from err
-            start = datetime.fromisoformat(session.started_at)
-            end = datetime.fromisoformat(session.ended_at) if session.ended_at else None
-            if pt < start or (end and pt > end):
-                raise ValueError("Timestamp outside session bounds")
-
-        pulse = session.pulses[pulse_index]
-        # Detect if anything actually changed (avoid creating useless undo entries)
-        ts_changed = timestamp is not None and timestamp != pulse.timestamp
-        type_changed = pulse_type is not None and pulse_type != pulse.pulse_type
-        if not ts_changed and not type_changed:
-            return self._session_to_dict(session)
-
-        self._push_edit_history(session)
-        if ts_changed:
-            pulse.timestamp = timestamp
-        if type_changed:
-            pulse.pulse_type = pulse_type
-        # Re-sort pulses by timestamp
-        session.pulses.sort(key=lambda p: p.timestamp)
-        self.store.update_session(session_id, pulses=session.pulses)
-        self._notify_listeners(user_id)
-        return self._session_to_dict(session)
-
-    async def async_undo_edit(self, user_id: str, session_id: str) -> dict:
-        """Undo the most recent edit on a session."""
-        session = self._get_editable_session(user_id, session_id)
-        history = self._edit_history.get(session_id, [])
-        if not history:
-            raise ValueError("Nothing to undo")
-
-        previous_pulses = history.pop()
-        session.pulses = previous_pulses
-        self.store.update_session(session_id, pulses=session.pulses)
-        self._notify_listeners(user_id)
-        return self._session_to_dict(session)
-
-    def get_edit_history_count(self, session_id: str) -> int:
-        """Get the number of undoable edits for a session."""
-        return len(self._edit_history.get(session_id, []))
-
     def _get_editable_session(
         self, user_id: str, session_id: str
     ) -> SleepSession:
-        """Get a session that can be edited (completed, not finalized, owned)."""
+        """Get a session that can be edited (stopped, not finalized, owned)."""
         session = self.store.get_session(session_id)
         if session is None or session.user_id != user_id:
             raise ValueError("Session not found")
@@ -360,7 +317,86 @@ class SleepTrackerCoordinator:
             raise ValueError("Cannot edit an active session")
         if session.finalized:
             raise ValueError("Cannot edit a finalized session")
+        if session.phases is None:
+            raise ValueError("Session has no materialized phases")
         return session
+
+    async def async_delete_phase(
+        self, user_id: str, session_id: str, phase_index: int
+    ) -> dict:
+        """Delete a phase. Bipartite invariant is preserved by collapsing
+        same-state neighbors that result from the deletion."""
+        session = self._get_editable_session(user_id, session_id)
+        assert session.phases is not None
+        assert session.ended_at is not None
+
+        new_phases = delete_phase(
+            session.phases, phase_index, session.started_at, session.ended_at
+        )
+        self._push_edit_history(session)
+        self.store.update_session(session_id, phases=new_phases)
+        self._notify_listeners(user_id)
+        return self._session_to_dict(session)
+
+    async def async_split_phase(
+        self,
+        user_id: str,
+        session_id: str,
+        phase_index: int,
+        at_timestamp: str,
+        wedge_minutes: float = 1.0,
+    ) -> dict:
+        """Split a phase by inserting an opposite-state wedge."""
+        session = self._get_editable_session(user_id, session_id)
+        assert session.phases is not None
+
+        new_phases = split_phase(
+            session.phases, phase_index, at_timestamp, wedge_minutes
+        )
+        self._push_edit_history(session)
+        self.store.update_session(session_id, phases=new_phases)
+        self._notify_listeners(user_id)
+        return self._session_to_dict(session)
+
+    async def async_adjust_phase_boundary(
+        self,
+        user_id: str,
+        session_id: str,
+        after_index: int,
+        new_time: str,
+    ) -> dict:
+        """Move the boundary that comes after phase[after_index]."""
+        session = self._get_editable_session(user_id, session_id)
+        assert session.phases is not None
+
+        # Detect no-op
+        if (
+            0 <= after_index < len(session.phases) - 1
+            and session.phases[after_index].end == new_time
+        ):
+            return self._session_to_dict(session)
+
+        new_phases = adjust_phase_boundary(session.phases, after_index, new_time)
+        self._push_edit_history(session)
+        self.store.update_session(session_id, phases=new_phases)
+        self._notify_listeners(user_id)
+        return self._session_to_dict(session)
+
+    async def async_undo_edit(self, user_id: str, session_id: str) -> dict:
+        """Undo the most recent phase edit on a session."""
+        session = self._get_editable_session(user_id, session_id)
+        history = self._edit_history.get(session_id, [])
+        if not history:
+            raise ValueError("Nothing to undo")
+
+        previous_phases = history.pop()
+        self.store.update_session(session_id, phases=previous_phases)
+        self._notify_listeners(user_id)
+        return self._session_to_dict(session)
+
+    def get_edit_history_count(self, session_id: str) -> int:
+        """Get the number of undoable edits for a session."""
+        return len(self._edit_history.get(session_id, []))
 
     # --- Finalization ---
 
@@ -377,10 +413,8 @@ class SleepTrackerCoordinator:
             raise ValueError("Session is already finalized")
 
         self.store.update_session(session_id, finalized=True)
-        # Clear edit history once finalized
         self._edit_history.pop(session_id, None)
 
-        # Auto-export if configured
         config = self.store.get_user_config(user_id)
         if config and config.export_url:
             try:
@@ -427,7 +461,6 @@ class SleepTrackerCoordinator:
         }
 
         if not active_session and config:
-            # Include last completed session and any unfinalized sessions
             history = self.store.get_user_sessions(user_id, limit=1)
             result["last_session"] = (
                 self._session_to_dict(history[0]) if history else None
@@ -447,7 +480,7 @@ class SleepTrackerCoordinator:
         return [self._session_to_dict(s) for s in sessions]
 
     def get_session_detail(self, session_id: str) -> dict | None:
-        """Get full session detail with computed intervals and stats."""
+        """Get full session detail with computed phases and stats."""
         session = self.store.get_session(session_id)
         if session is None:
             return None
@@ -477,10 +510,10 @@ class SleepTrackerCoordinator:
         daily: list[dict] = []
 
         for session in sessions:
-            intervals = compute_intervals(
-                session.started_at, session.ended_at, session.pulses, **params
+            phases = session.phases if session.phases is not None else materialize_phases(
+                session.started_at, session.ended_at, session.events, **params
             )
-            stats = compute_stats(intervals, session.started_at, session.ended_at)
+            stats = compute_stats(phases, session.started_at, session.ended_at)
             daily.append({
                 "session_id": session.session_id,
                 "date": session.started_at[:10],
@@ -489,15 +522,17 @@ class SleepTrackerCoordinator:
                 **stats,
             })
 
-        # Compute averages
         n = len(daily)
         if n > 0:
             avg_sleep = sum(d["total_sleep_minutes"] for d in daily) / n
             avg_efficiency = sum(d["sleep_efficiency"] for d in daily) / n
             avg_awakenings = sum(d["awakenings"] for d in daily) / n
             avg_time_to_sleep = sum(d["time_to_fall_asleep_minutes"] for d in daily) / n
+            avg_sleep_period = sum(d["sleep_period_minutes"] for d in daily) / n
+            avg_time_before_up = sum(d["time_before_getting_up_minutes"] for d in daily) / n
         else:
             avg_sleep = avg_efficiency = avg_awakenings = avg_time_to_sleep = 0
+            avg_sleep_period = avg_time_before_up = 0
 
         return {
             "days": days,
@@ -505,16 +540,18 @@ class SleepTrackerCoordinator:
             "daily": daily,
             "averages": {
                 "total_sleep_minutes": round(avg_sleep, 1),
+                "sleep_period_minutes": round(avg_sleep_period, 1),
                 "sleep_efficiency": round(avg_efficiency, 3),
                 "awakenings": round(avg_awakenings, 1),
                 "time_to_fall_asleep_minutes": round(avg_time_to_sleep, 1),
+                "time_before_getting_up_minutes": round(avg_time_before_up, 1),
             },
         }
 
     # --- Helpers ---
 
     def _get_user_timeline_params(self, user_id: str) -> dict:
-        """Get timeline computation parameters for a user."""
+        """Get phase materialization parameters for a user."""
         config = self.store.get_user_config(user_id)
         return {
             "fall_asleep_latency_minutes": config.fall_asleep_latency_minutes if config else 15,
@@ -522,23 +559,31 @@ class SleepTrackerCoordinator:
         }
 
     def _session_to_dict(self, session: SleepSession) -> dict:
-        """Convert session to dict with computed intervals and stats."""
-        params = self._get_user_timeline_params(session.user_id)
+        """Convert session to dict with phases and stats.
 
-        intervals = compute_intervals(
-            session.started_at,
-            session.ended_at,
-            session.pulses,
-            **params,
-        )
+        For active sessions or sessions without stored phases, materialize
+        on-the-fly. For stopped sessions with stored phases, use those directly.
+        """
+        if session.phases is not None:
+            phases = session.phases
+        else:
+            params = self._get_user_timeline_params(session.user_id)
+            phases = materialize_phases(
+                session.started_at,
+                session.ended_at,
+                session.events,
+                **params,
+            )
 
         result = session.to_dict()
-        result["intervals"] = [i.to_dict() for i in intervals]
+        # Always include phases in the response (even if not stored), so the
+        # frontend has a single rendering path.
+        result["phases"] = [p.to_dict() for p in phases]
         result["undo_count"] = self.get_edit_history_count(session.session_id)
 
         if session.ended_at:
             result["stats"] = compute_stats(
-                intervals, session.started_at, session.ended_at
+                phases, session.started_at, session.ended_at
             )
         else:
             result["stats"] = None

@@ -39,7 +39,7 @@ class UserConfig:
             user_id=data["user_id"],
             enabled=data.get("enabled", True),
             display_name=data.get("display_name", ""),
-            sleep_onset_minutes=data.get("sleep_onset_minutes", 30),
+            sleep_onset_minutes=data.get("sleep_onset_minutes", 0),
             fall_asleep_latency_minutes=data.get("fall_asleep_latency_minutes", 15),
             auto_finalize_hours=data.get("auto_finalize_hours", 12),
             export_url=data.get("export_url"),
@@ -49,38 +49,68 @@ class UserConfig:
 
 
 @dataclass
-class SleepPulse:
-    """A single pulse event during a sleep session."""
+class SleepEvent:
+    """A single raw event during a sleep session — immutable signal."""
 
     timestamp: str  # ISO 8601
-    pulse_type: str  # "awake" or "still_awake"
+    event_type: str  # "awake", "still_awake", or "fell_asleep"
     source: str = "manual"
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "timestamp": self.timestamp,
-            "pulse_type": self.pulse_type,
+            "event_type": self.event_type,
             "source": self.source,
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> SleepPulse:
+    def from_dict(cls, data: dict[str, Any]) -> SleepEvent:
         return cls(
             timestamp=data["timestamp"],
-            pulse_type=data["pulse_type"],
+            event_type=data["event_type"],
             source=data.get("source", "manual"),
         )
 
 
 @dataclass
+class SleepPhase:
+    """A sleep/wake phase — the editable representation of a sleep state."""
+
+    start: str  # ISO 8601
+    end: str  # ISO 8601
+    state: str  # "awake" or "asleep"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "start": self.start,
+            "end": self.end,
+            "state": self.state,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SleepPhase:
+        return cls(
+            start=data["start"],
+            end=data["end"],
+            state=data["state"],
+        )
+
+
+@dataclass
 class SleepSession:
-    """A single sleep tracking session (one night)."""
+    """A single sleep tracking session (one night).
+
+    During an active session, only events accumulate. On stop, phases are
+    materialized from events using the latency/onset algorithm and stored.
+    After stop, phases are edited directly and events become read-only history.
+    """
 
     session_id: str
     user_id: str
     started_at: str  # ISO 8601
     ended_at: str | None = None  # ISO 8601, None if active
-    pulses: list[SleepPulse] = field(default_factory=list)
+    events: list[SleepEvent] = field(default_factory=list)
+    phases: list[SleepPhase] | None = None  # materialized on stop
     finalized: bool = False
     exported: bool = False
 
@@ -94,35 +124,28 @@ class SleepSession:
             "user_id": self.user_id,
             "started_at": self.started_at,
             "ended_at": self.ended_at,
-            "pulses": [p.to_dict() for p in self.pulses],
+            "events": [e.to_dict() for e in self.events],
+            "phases": (
+                [p.to_dict() for p in self.phases] if self.phases is not None else None
+            ),
             "finalized": self.finalized,
             "exported": self.exported,
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SleepSession:
+        phases_data = data.get("phases")
         return cls(
             session_id=data["session_id"],
             user_id=data["user_id"],
             started_at=data["started_at"],
             ended_at=data.get("ended_at"),
-            pulses=[SleepPulse.from_dict(p) for p in data.get("pulses", [])],
+            events=[SleepEvent.from_dict(e) for e in data.get("events", [])],
+            phases=(
+                [SleepPhase.from_dict(p) for p in phases_data]
+                if phases_data is not None
+                else None
+            ),
             finalized=data.get("finalized", False),
             exported=data.get("exported", False),
         )
-
-
-@dataclass
-class TimelineInterval:
-    """A computed interval in the sleep timeline."""
-
-    start: str  # ISO 8601
-    end: str  # ISO 8601
-    state: str  # "awake" or "asleep"
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "start": self.start,
-            "end": self.end,
-            "state": self.state,
-        }

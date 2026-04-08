@@ -111,8 +111,8 @@ class SleepTrackerLastNightCard extends LitElement {
           </div>
 
           <sleep-tracker-timeline-bar
-            .intervals=${last.intervals}
-            .pulses=${last.pulses}
+            .phases=${last.phases}
+            .events=${last.events}
             .startedAt=${last.started_at}
             .endedAt=${last.ended_at}
             compact

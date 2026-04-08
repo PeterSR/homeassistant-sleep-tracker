@@ -10,11 +10,11 @@ export class PulseButton extends LitElement {
   @state() private _sending = false;
   @state() private _flash: "awake" | "still_awake" | null = null;
 
-  private async _pulse(type: "awake" | "still_awake") {
+  private async _sendEvent(type: "awake" | "still_awake") {
     if (this._sending || this.disabled) return;
     this._sending = true;
     try {
-      await this.api.pulse(type);
+      await this.api.event(type);
       this.dispatchEvent(
         new CustomEvent("sleep-tracker-state-update", {
           bubbles: true,
@@ -26,7 +26,7 @@ export class PulseButton extends LitElement {
         this._flash = null;
       }, 600);
     } catch (err) {
-      console.error("Pulse failed:", err);
+      console.error("Event failed:", err);
     } finally {
       this._sending = false;
     }
@@ -38,7 +38,7 @@ export class PulseButton extends LitElement {
         <button
           class="pulse-btn ${this._flash === "awake" ? "flashed" : ""}"
           ?disabled=${this.disabled || this._sending}
-          @click=${() => this._pulse("awake")}
+          @click=${() => this._sendEvent("awake")}
         >
           <ha-icon icon="mdi:eye-outline"></ha-icon>
           I woke up
@@ -46,7 +46,7 @@ export class PulseButton extends LitElement {
         <button
           class="pulse-btn ${this._flash === "still_awake" ? "flashed" : ""}"
           ?disabled=${this.disabled || this._sending}
-          @click=${() => this._pulse("still_awake")}
+          @click=${() => this._sendEvent("still_awake")}
         >
           <ha-icon icon="mdi:eye-check-outline"></ha-icon>
           Still awake

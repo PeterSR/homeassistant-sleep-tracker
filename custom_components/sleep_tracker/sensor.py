@@ -102,7 +102,7 @@ class _SleepTrackerSensorBase(SensorEntity):
 
 
 class LastAwakeSensor(_SleepTrackerSensorBase):
-    """Timestamp of the last awake pulse."""
+    """Timestamp of the last event."""
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:eye-outline"
@@ -116,18 +116,18 @@ class LastAwakeSensor(_SleepTrackerSensorBase):
     @callback
     def _update_from_coordinator(self) -> None:
         session = self._coordinator.store.get_active_session(self._user_id)
-        if session and session.pulses:
-            last_pulse = session.pulses[-1]
-            self._attr_native_value = datetime.fromisoformat(last_pulse.timestamp)
+        if session and session.events:
+            last_event = session.events[-1]
+            self._attr_native_value = datetime.fromisoformat(last_event.timestamp)
         elif not session:
             # Check last completed session
             history = self._coordinator.store.get_user_sessions(
                 self._user_id, limit=1
             )
-            if history and history[0].pulses:
-                last_pulse = history[0].pulses[-1]
+            if history and history[0].events:
+                last_event = history[0].events[-1]
                 self._attr_native_value = datetime.fromisoformat(
-                    last_pulse.timestamp
+                    last_event.timestamp
                 )
             else:
                 self._attr_native_value = None
@@ -214,8 +214,9 @@ class AwakeCountSensor(_SleepTrackerSensorBase):
             session = history[0] if history else None
 
         if session:
+            # Count "awake" events excluding still_awake/fell_asleep
             count = sum(
-                1 for p in session.pulses if p.pulse_type == "awake"
+                1 for e in session.events if e.event_type == "awake"
             )
             self._attr_native_value = count
         else:

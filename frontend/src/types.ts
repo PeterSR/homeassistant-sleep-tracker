@@ -24,24 +24,31 @@ export interface ToolbarConfig {
   actions?: unknown;
 }
 
-export interface SleepPulse {
+export type EventType = "awake" | "still_awake" | "fell_asleep";
+
+export interface SleepEvent {
   timestamp: string;
-  pulse_type: "awake" | "still_awake";
+  event_type: EventType;
   source: string;
 }
 
-export interface TimelineInterval {
+export type PhaseState = "awake" | "asleep";
+
+export interface SleepPhase {
   start: string;
   end: string;
-  state: "awake" | "asleep";
+  state: PhaseState;
 }
 
 export interface SessionStats {
+  time_in_bed_minutes: number;
+  sleep_period_minutes: number;
   total_sleep_minutes: number;
   total_awake_minutes: number;
   sleep_efficiency: number;
-  awakenings: number;
   time_to_fall_asleep_minutes: number;
+  time_before_getting_up_minutes: number;
+  awakenings: number;
 }
 
 export interface SleepSession {
@@ -49,10 +56,10 @@ export interface SleepSession {
   user_id: string;
   started_at: string;
   ended_at: string | null;
-  pulses: SleepPulse[];
+  events: SleepEvent[];
+  phases: SleepPhase[];
   finalized: boolean;
   exported: boolean;
-  intervals: TimelineInterval[];
   stats: SessionStats | null;
   undo_count?: number;
 }

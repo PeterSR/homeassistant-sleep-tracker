@@ -96,13 +96,13 @@ class SleepTrackerStatusCard extends LitElement {
     }
   }
 
-  private async _pulse(type: "awake" | "still_awake") {
+  private async _sendEvent(type: "awake" | "still_awake") {
     if (!this._api || this._sending) return;
     this._sending = true;
     try {
-      await this._api.pulse(type);
+      await this._api.event(type);
     } catch (e) {
-      console.error("Pulse failed:", e);
+      console.error("Event failed:", e);
     } finally {
       this._sending = false;
     }
@@ -141,8 +141,8 @@ class SleepTrackerStatusCard extends LitElement {
             </div>
 
             <sleep-tracker-timeline-bar
-              .intervals=${active.intervals}
-              .pulses=${active.pulses}
+              .phases=${active.phases}
+              .events=${active.events}
               .startedAt=${active.started_at}
               .endedAt=${null}
               compact
@@ -150,16 +150,16 @@ class SleepTrackerStatusCard extends LitElement {
 
             <div class="actions">
               <button
-                class="action-btn pulse-awake"
+                class="action-btn event-awake"
                 ?disabled=${this._sending}
-                @click=${() => this._pulse("awake")}
+                @click=${() => this._sendEvent("awake")}
               >
                 I woke up
               </button>
               <button
-                class="action-btn pulse-still"
+                class="action-btn event-still"
                 ?disabled=${this._sending}
-                @click=${() => this._pulse("still_awake")}
+                @click=${() => this._sendEvent("still_awake")}
               >
                 Still awake
               </button>
@@ -194,8 +194,8 @@ class SleepTrackerStatusCard extends LitElement {
           ${last
             ? html`
                 <sleep-tracker-timeline-bar
-                  .intervals=${last.intervals}
-                  .pulses=${last.pulses}
+                  .phases=${last.phases}
+                  .events=${last.events}
                   .startedAt=${last.started_at}
                   .endedAt=${last.ended_at}
                   compact

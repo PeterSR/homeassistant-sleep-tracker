@@ -10,7 +10,7 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 
-from .const import DOMAIN, PULSE_AWAKE, PULSE_STILL_AWAKE
+from .const import DOMAIN, EVENT_AWAKE, EVENT_FELL_ASLEEP, EVENT_STILL_AWAKE
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -20,15 +20,16 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_get_state)
     websocket_api.async_register_command(hass, ws_get_history)
     websocket_api.async_register_command(hass, ws_get_session)
+    websocket_api.async_register_command(hass, ws_get_stats)
     websocket_api.async_register_command(hass, ws_start_sleep)
     websocket_api.async_register_command(hass, ws_stop_sleep)
-    websocket_api.async_register_command(hass, ws_pulse)
+    websocket_api.async_register_command(hass, ws_reopen_session)
+    websocket_api.async_register_command(hass, ws_event)
     websocket_api.async_register_command(hass, ws_setup_user)
     websocket_api.async_register_command(hass, ws_update_settings)
-    websocket_api.async_register_command(hass, ws_get_stats)
-    websocket_api.async_register_command(hass, ws_delete_pulse)
-    websocket_api.async_register_command(hass, ws_swap_pulse_type)
-    websocket_api.async_register_command(hass, ws_update_pulse)
+    websocket_api.async_register_command(hass, ws_delete_phase)
+    websocket_api.async_register_command(hass, ws_split_phase)
+    websocket_api.async_register_command(hass, ws_adjust_phase_boundary)
     websocket_api.async_register_command(hass, ws_undo_edit)
     websocket_api.async_register_command(hass, ws_finalize_session)
     websocket_api.async_register_command(hass, ws_export_session)
@@ -158,29 +159,54 @@ async def ws_stop_sleep(
         connection.send_error(msg["id"], "stop_failed", str(err))
 
 
-# --- Pulse ---
+# --- Reopen Session ---
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "sleep_tracker/pulse",
-        vol.Required("pulse_type"): vol.In([PULSE_AWAKE, PULSE_STILL_AWAKE]),
+        vol.Required("type"): "sleep_tracker/reopen_session",
+        vol.Required("session_id"): str,
     }
 )
 @websocket_api.async_response
-async def ws_pulse(
+async def ws_reopen_session(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
-    """Record a pulse in the active session."""
+    """Reopen a stopped session, allowing events to be appended again."""
     coordinator = _get_data(hass)["coordinator"]
     user_id = connection.user.id
 
     try:
-        session = await coordinator.async_pulse(
-            user_id, msg["pulse_type"], source="panel"
+        session = await coordinator.async_reopen_session(user_id, msg["session_id"])
+        connection.send_result(msg["id"], session)
+    except ValueError as err:
+        connection.send_error(msg["id"], "reopen_failed", str(err))
+
+
+# --- Event ---
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "sleep_tracker/event",
+        vol.Required("event_type"): vol.In(
+            [EVENT_AWAKE, EVENT_STILL_AWAKE, EVENT_FELL_ASLEEP]
+        ),
+    }
+)
+@websocket_api.async_response
+async def ws_event(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Record an event in the active session."""
+    coordinator = _get_data(hass)["coordinator"]
+    user_id = connection.user.id
+
+    try:
+        session = await coordinator.async_event(
+            user_id, msg["event_type"], source="panel"
         )
         connection.send_result(msg["id"], session)
     except ValueError as err:
-        connection.send_error(msg["id"], "pulse_failed", str(err))
+        connection.send_error(msg["id"], "event_failed", str(err))
 
 
 # --- Setup User ---
@@ -249,88 +275,89 @@ async def ws_update_settings(
         connection.send_error(msg["id"], "update_failed", str(err))
 
 
-# --- Delete Pulse ---
+# --- Delete Phase ---
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "sleep_tracker/delete_pulse",
+        vol.Required("type"): "sleep_tracker/delete_phase",
         vol.Required("session_id"): str,
-        vol.Required("pulse_index"): int,
+        vol.Required("phase_index"): int,
     }
 )
 @websocket_api.async_response
-async def ws_delete_pulse(
+async def ws_delete_phase(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
-    """Delete a pulse from a session."""
+    """Delete a phase from a session."""
     coordinator = _get_data(hass)["coordinator"]
     user_id = connection.user.id
 
     try:
-        session = await coordinator.async_delete_pulse(
-            user_id, msg["session_id"], msg["pulse_index"]
+        session = await coordinator.async_delete_phase(
+            user_id, msg["session_id"], msg["phase_index"]
         )
         connection.send_result(msg["id"], session)
     except ValueError as err:
         connection.send_error(msg["id"], "delete_failed", str(err))
 
 
-# --- Swap Pulse Type ---
+# --- Split Phase ---
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "sleep_tracker/swap_pulse_type",
+        vol.Required("type"): "sleep_tracker/split_phase",
         vol.Required("session_id"): str,
-        vol.Required("pulse_index"): int,
+        vol.Required("phase_index"): int,
+        vol.Required("at_timestamp"): str,
+        vol.Optional("wedge_minutes", default=1.0): vol.Coerce(float),
     }
 )
 @websocket_api.async_response
-async def ws_swap_pulse_type(
+async def ws_split_phase(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
-    """Swap a pulse's type between awake and still_awake."""
+    """Split a phase by inserting an opposite-state wedge."""
     coordinator = _get_data(hass)["coordinator"]
     user_id = connection.user.id
 
     try:
-        session = await coordinator.async_swap_pulse_type(
-            user_id, msg["session_id"], msg["pulse_index"]
-        )
-        connection.send_result(msg["id"], session)
-    except ValueError as err:
-        connection.send_error(msg["id"], "swap_failed", str(err))
-
-
-# --- Update Pulse ---
-
-@websocket_api.websocket_command(
-    {
-        vol.Required("type"): "sleep_tracker/update_pulse",
-        vol.Required("session_id"): str,
-        vol.Required("pulse_index"): int,
-        vol.Optional("timestamp"): str,
-        vol.Optional("pulse_type"): vol.In([PULSE_AWAKE, PULSE_STILL_AWAKE]),
-    }
-)
-@websocket_api.async_response
-async def ws_update_pulse(
-    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
-) -> None:
-    """Update a pulse's timestamp and/or type."""
-    coordinator = _get_data(hass)["coordinator"]
-    user_id = connection.user.id
-
-    try:
-        session = await coordinator.async_update_pulse(
+        session = await coordinator.async_split_phase(
             user_id,
             msg["session_id"],
-            msg["pulse_index"],
-            timestamp=msg.get("timestamp"),
-            pulse_type=msg.get("pulse_type"),
+            msg["phase_index"],
+            msg["at_timestamp"],
+            msg["wedge_minutes"],
         )
         connection.send_result(msg["id"], session)
     except ValueError as err:
-        connection.send_error(msg["id"], "update_failed", str(err))
+        connection.send_error(msg["id"], "split_failed", str(err))
+
+
+# --- Adjust Phase Boundary ---
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "sleep_tracker/adjust_phase_boundary",
+        vol.Required("session_id"): str,
+        vol.Required("after_index"): int,
+        vol.Required("new_time"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_adjust_phase_boundary(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Move a phase boundary."""
+    coordinator = _get_data(hass)["coordinator"]
+    user_id = connection.user.id
+
+    try:
+        session = await coordinator.async_adjust_phase_boundary(
+            user_id, msg["session_id"], msg["after_index"], msg["new_time"]
+        )
+        connection.send_result(msg["id"], session)
+    except ValueError as err:
+        connection.send_error(msg["id"], "adjust_failed", str(err))
 
 
 # --- Undo Edit ---
@@ -345,11 +372,10 @@ async def ws_update_pulse(
 async def ws_undo_edit(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
-    """Undo the most recent edit on a session."""
+    """Undo the most recent phase edit on a session."""
     coordinator = _get_data(hass)["coordinator"]
     user_id = connection.user.id
 
-    # Verify ownership
     s = coordinator.store.get_session(msg["session_id"])
     if s is None or s.user_id != user_id:
         connection.send_error(msg["id"], "not_found", "Session not found")
@@ -405,7 +431,6 @@ async def ws_export_session(
     coordinator = _get_data(hass)["coordinator"]
     user_id = connection.user.id
 
-    # Verify ownership
     session = coordinator.store.get_session(msg["session_id"])
     if session is None or session.user_id != user_id:
         connection.send_error(msg["id"], "not_found", "Session not found")
@@ -431,7 +456,6 @@ def ws_subscribe(
     coordinator = _get_data(hass)["coordinator"]
     user_id = connection.user.id
 
-    # Send initial state
     connection.send_result(msg["id"])
     state = coordinator.get_user_state(user_id)
     connection.send_message(websocket_api.event_message(msg["id"], state))

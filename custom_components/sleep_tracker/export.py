@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .timeline import compute_intervals, compute_stats
+from .phases import compute_stats, materialize_phases
 
 if TYPE_CHECKING:
     from .coordinator import SleepTrackerCoordinator
@@ -36,24 +36,27 @@ async def async_export_session(
     if config is None or not config.export_url:
         raise ExportError("No export URL configured for this user")
 
-    intervals = compute_intervals(
-        session.started_at,
-        session.ended_at,
-        session.pulses,
-        config.fall_asleep_latency_minutes,
-    )
-    stats = compute_stats(intervals, session.started_at, session.ended_at)
+    # Prefer stored (edited) phases; fall back to materializing from events
+    if session.phases is not None:
+        phases = session.phases
+    else:
+        phases = materialize_phases(
+            session.started_at,
+            session.ended_at,
+            session.events,
+            fall_asleep_latency_minutes=config.fall_asleep_latency_minutes,
+            sleep_onset_minutes=config.sleep_onset_minutes,
+        )
+    stats = compute_stats(phases, session.started_at, session.ended_at)
 
     payload = {
         "session_id": session.session_id,
         "user_id": session.user_id,
         "started_at": session.started_at,
         "ended_at": session.ended_at,
-        "pulses": [p.to_dict() for p in session.pulses],
-        "computed": {
-            **stats,
-            "intervals": [i.to_dict() for i in intervals],
-        },
+        "events": [e.to_dict() for e in session.events],
+        "phases": [p.to_dict() for p in phases],
+        "stats": stats,
     }
 
     client = async_get_clientsession(hass)

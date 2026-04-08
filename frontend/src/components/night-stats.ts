@@ -32,9 +32,34 @@ export class NightStats extends LitElement {
           </div>
           <div class="stat-label">Time to Sleep</div>
         </div>
+        <div class="stat">
+          <div class="stat-value">
+            ${formatDuration(s.sleep_period_minutes)}
+          </div>
+          <div class="stat-label">Sleep Period</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value">
+            ${formatDuration(s.time_before_getting_up_minutes)}
+          </div>
+          <div class="stat-label">Awake Before Up</div>
+        </div>
       </div>
     `;
   }
 
-  static styles = [tokens, statStyles];
+  static styles = [
+    tokens,
+    statStyles,
+    css`
+      .stats-grid {
+        grid-template-columns: repeat(3, 1fr);
+      }
+      @media (max-width: 480px) {
+        .stats-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+    `,
+  ];
 }

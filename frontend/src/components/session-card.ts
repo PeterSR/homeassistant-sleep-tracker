@@ -33,8 +33,8 @@ export class SessionCard extends LitElement {
           </span>
         </div>
         <sleep-tracker-timeline-bar
-          .intervals=${s.intervals}
-          .pulses=${s.pulses}
+          .phases=${s.phases}
+          .events=${s.events}
           .startedAt=${s.started_at}
           .endedAt=${s.ended_at}
           compact

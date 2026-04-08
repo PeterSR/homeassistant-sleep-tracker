@@ -3,10 +3,12 @@ import { customElement, property, state } from "lit/decorators.js";
 import type { HomeAssistant, UserState, SleepSession, ToolbarConfig } from "../types";
 import type { SleepTrackerApi } from "../api";
 import { tokens, viewStyles, sectionStyles, cardStyles } from "../styles";
-import { formatDate, formatTime } from "../utils";
+import { formatDate, formatTime, formatDuration } from "../utils";
 
 import "../components/timeline-bar";
 import "../components/night-stats";
+
+type BoundaryEdit = { afterIndex: number };
 
 @customElement("sleep-tracker-night-detail-view")
 export class NightDetailView extends LitElement {
@@ -19,15 +21,13 @@ export class NightDetailView extends LitElement {
   @state() private _session: SleepSession | null = null;
   @state() private _loading = true;
   @state() private _busy = false;
-  @state() private _editingTimeIndex: number | null = null;
+  @state() private _editingBoundary: BoundaryEdit | null = null;
+  @state() private _splittingPhaseIndex: number | null = null;
+  @state() private _showEvents = false;
 
   connectedCallback(): void {
     super.connectedCallback();
     this._load();
-  }
-
-  disconnectedCallback(): void {
-    super.disconnectedCallback();
   }
 
   willUpdate(changed: PropertyValues): void {
@@ -65,25 +65,32 @@ export class NightDetailView extends LitElement {
     return !!this._session && !this._session.finalized && !!this._session.ended_at;
   }
 
-  private async _deletePulse(index: number) {
+  private async _deletePhase(index: number) {
     if (!this._session || this._busy) return;
     this._busy = true;
     try {
-      this._session = await this.api.deletePulse(this._session.session_id, index);
+      this._session = await this.api.deletePhase(this._session.session_id, index);
     } catch (err) {
-      console.error("Delete pulse failed:", err);
+      console.error("Delete phase failed:", err);
     } finally {
       this._busy = false;
     }
   }
 
-  private async _swapPulseType(index: number) {
+  private async _splitPhase(index: number) {
     if (!this._session || this._busy) return;
+    const phase = this._session.phases[index];
+    // Default split point: middle of the phase
+    const startMs = new Date(phase.start).getTime();
+    const endMs = new Date(phase.end).getTime();
+    const midMs = (startMs + endMs) / 2;
+    const at = this._toLocalIso(new Date(midMs));
+
     this._busy = true;
     try {
-      this._session = await this.api.swapPulseType(this._session.session_id, index);
+      this._session = await this.api.splitPhase(this._session.session_id, index, at);
     } catch (err) {
-      console.error("Swap pulse type failed:", err);
+      console.error("Split phase failed:", err);
     } finally {
       this._busy = false;
     }
@@ -101,54 +108,52 @@ export class NightDetailView extends LitElement {
     }
   }
 
-  private _startEditTime(index: number) {
+  private _startEditBoundary(afterIndex: number) {
     if (!this._editable) return;
-    this._editingTimeIndex = index;
+    this._editingBoundary = { afterIndex };
   }
 
-  private _cancelEditTime() {
-    this._editingTimeIndex = null;
+  private _cancelEditBoundary() {
+    this._editingBoundary = null;
   }
 
-  private async _commitEditTime(index: number) {
-    if (!this._session) return;
+  private async _commitEditBoundary() {
+    if (!this._session || !this._editingBoundary) return;
+    const { afterIndex } = this._editingBoundary;
     const input = this.shadowRoot?.querySelector(".time-input") as HTMLInputElement | null;
     if (!input) {
-      this._editingTimeIndex = null;
+      this._editingBoundary = null;
       return;
     }
-    const newTimeValue = input.value; // "HH:MM" or "HH:MM:SS"
+    const newTimeValue = input.value;
     if (!newTimeValue) {
-      this._editingTimeIndex = null;
+      this._editingBoundary = null;
       return;
     }
 
-    // Build a new ISO timestamp by replacing the time portion of the existing pulse
-    const oldTs = this._session.pulses[index].timestamp;
+    // Build a new ISO timestamp by replacing the time portion of the existing boundary
+    const oldTs = this._session.phases[afterIndex].end;
     const oldDate = new Date(oldTs);
     const [h, m] = newTimeValue.split(":").map(Number);
     oldDate.setHours(h, m, 0, 0);
-
-    // Format as local ISO with TZ offset
     const newTs = this._toLocalIso(oldDate);
 
     this._busy = true;
-    this._editingTimeIndex = null;
+    this._editingBoundary = null;
     try {
-      this._session = await this.api.updatePulse(
+      this._session = await this.api.adjustPhaseBoundary(
         this._session.session_id,
-        index,
-        { timestamp: newTs }
+        afterIndex,
+        newTs
       );
     } catch (err) {
-      console.error("Update pulse time failed:", err);
+      console.error("Adjust boundary failed:", err);
     } finally {
       this._busy = false;
     }
   }
 
   private _toLocalIso(d: Date): string {
-    // Returns ISO 8601 with local TZ offset, e.g. "2026-04-06T04:18:00+02:00"
     const pad = (n: number) => String(n).padStart(2, "0");
     const year = d.getFullYear();
     const month = pad(d.getMonth() + 1);
@@ -167,6 +172,11 @@ export class NightDetailView extends LitElement {
     const d = new Date(iso);
     const pad = (n: number) => String(n).padStart(2, "0");
     return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  private _phaseDuration(start: string, end: string): string {
+    const ms = new Date(end).getTime() - new Date(start).getTime();
+    return formatDuration(ms / 60000);
   }
 
   private async _finalize() {
@@ -191,6 +201,7 @@ export class NightDetailView extends LitElement {
 
     const s = this._session;
     const editable = this._editable;
+    const phases = s.phases ?? [];
 
     return html`
       <div class="container">
@@ -198,7 +209,7 @@ export class NightDetailView extends LitElement {
           ? html`
               <div class="review-banner">
                 <ha-icon icon="mdi:pencil-outline"></ha-icon>
-                <span>This session is not finalized. Edit pulses below, then finalize when ready.</span>
+                <span>This session is not finalized. Edit phases below, then finalize when ready.</span>
               </div>
             `
           : nothing}
@@ -217,8 +228,8 @@ export class NightDetailView extends LitElement {
           </div>
           <div class="timeline-section">
             <sleep-tracker-timeline-bar
-              .intervals=${s.intervals}
-              .pulses=${s.pulses}
+              .phases=${phases}
+              .events=${s.events}
               .startedAt=${s.started_at}
               .endedAt=${s.ended_at}
             ></sleep-tracker-timeline-bar>
@@ -236,7 +247,7 @@ export class NightDetailView extends LitElement {
 
         <div class="section">
           <div class="section-header">
-            <h3>Pulses (${s.pulses.length})</h3>
+            <h3>Phases (${phases.length})</h3>
             ${editable && (s.undo_count ?? 0) > 0
               ? html`
                   <button
@@ -251,78 +262,24 @@ export class NightDetailView extends LitElement {
                 `
               : nothing}
           </div>
-          ${s.pulses.length > 0
-            ? html`
-                <div class="pulse-list">
-                  ${s.pulses.map(
-                    (p, i) => html`
-                      <div class="pulse-item ${this._editingTimeIndex === i ? "editing" : ""}">
-                        <span
-                          class="pulse-type ${p.pulse_type} ${editable ? "clickable" : ""}"
-                          @click=${editable ? () => this._swapPulseType(i) : nothing}
-                          title=${editable ? "Click to swap type" : ""}
-                        >
-                          ${p.pulse_type === "awake" ? "Woke up" : "Still awake"}
-                        </span>
-                        ${this._editingTimeIndex === i
-                          ? html`
-                              <input
-                                type="time"
-                                class="time-input"
-                                .value=${this._toTimeInput(p.timestamp)}
-                                @keydown=${(e: KeyboardEvent) => {
-                                  if (e.key === "Enter") this._commitEditTime(i);
-                                  if (e.key === "Escape") this._cancelEditTime();
-                                }}
-                                autofocus
-                              />
-                              <button
-                                class="edit-action save"
-                                ?disabled=${this._busy}
-                                @click=${() => this._commitEditTime(i)}
-                                title="Save"
-                              >
-                                <ha-icon icon="mdi:check"></ha-icon>
-                              </button>
-                              <button
-                                class="edit-action cancel"
-                                ?disabled=${this._busy}
-                                @click=${this._cancelEditTime}
-                                title="Cancel"
-                              >
-                                <ha-icon icon="mdi:close"></ha-icon>
-                              </button>
-                            `
-                          : html`
-                              <span
-                                class="pulse-time ${editable ? "clickable" : ""}"
-                                @click=${editable ? () => this._startEditTime(i) : nothing}
-                                title=${editable ? "Click to edit time" : ""}
-                              >${formatTime(p.timestamp)}</span>
-                            `}
-                        ${this._editingTimeIndex !== i
-                          ? html`
-                              <span class="pulse-source">${p.source}</span>
-                              ${editable
-                                ? html`
-                                    <button
-                                      class="delete-btn"
-                                      ?disabled=${this._busy}
-                                      @click=${() => this._deletePulse(i)}
-                                      title="Delete pulse"
-                                    >
-                                      <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-                                    </button>
-                                  `
-                                : nothing}
-                            `
-                          : nothing}
-                      </div>
-                    `
-                  )}
-                </div>
-              `
-            : html`<p class="no-pulses">No pulses recorded.</p>`}
+          ${this._renderPhaseList(phases, editable)}
+        </div>
+
+        <div class="section">
+          <div class="section-header">
+            <h3>
+              <button
+                class="toggle-btn"
+                @click=${() => { this._showEvents = !this._showEvents; }}
+              >
+                <ha-icon icon=${this._showEvents ? "mdi:chevron-down" : "mdi:chevron-right"}></ha-icon>
+                Events (${s.events.length}) — read-only
+              </button>
+            </h3>
+          </div>
+          ${this._showEvents
+            ? this._renderEventList(s.events)
+            : nothing}
         </div>
 
         ${editable
@@ -341,6 +298,133 @@ export class NightDetailView extends LitElement {
               </div>
             `
           : nothing}
+      </div>
+    `;
+  }
+
+  private _renderPhaseList(phases: any[], editable: boolean) {
+    if (phases.length === 0) {
+      return html`<p class="empty-text">No phases.</p>`;
+    }
+
+    return html`
+      <div class="phase-list">
+        ${phases.map((p, i) => {
+          const isFirst = i === 0;
+          const isLast = i === phases.length - 1;
+          const editingThisBoundary =
+            this._editingBoundary !== null &&
+            this._editingBoundary.afterIndex === i;
+
+          return html`
+            <div class="phase-item ${p.state}">
+              <div class="phase-row">
+                <span class="phase-state ${p.state}">
+                  ${p.state === "asleep" ? "Asleep" : "Awake"}
+                </span>
+                <span class="phase-times">
+                  ${formatTime(p.start)} — ${formatTime(p.end)}
+                </span>
+                <span class="phase-duration">
+                  ${this._phaseDuration(p.start, p.end)}
+                </span>
+                ${editable
+                  ? html`
+                      <button
+                        class="phase-action"
+                        ?disabled=${this._busy}
+                        @click=${() => this._splitPhase(i)}
+                        title="Split phase (insert opposite-state wedge)"
+                      >
+                        <ha-icon icon="mdi:call-split"></ha-icon>
+                      </button>
+                      ${phases.length > 1
+                        ? html`
+                            <button
+                              class="phase-action delete"
+                              ?disabled=${this._busy}
+                              @click=${() => this._deletePhase(i)}
+                              title="Delete phase (merges neighbors)"
+                            >
+                              <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                            </button>
+                          `
+                        : nothing}
+                    `
+                  : nothing}
+              </div>
+            </div>
+            ${!isLast
+              ? html`
+                  <div class="boundary">
+                    ${editingThisBoundary
+                      ? html`
+                          <input
+                            type="time"
+                            class="time-input"
+                            .value=${this._toTimeInput(p.end)}
+                            @keydown=${(e: KeyboardEvent) => {
+                              if (e.key === "Enter") this._commitEditBoundary();
+                              if (e.key === "Escape") this._cancelEditBoundary();
+                            }}
+                            autofocus
+                          />
+                          <button
+                            class="edit-action save"
+                            ?disabled=${this._busy}
+                            @click=${this._commitEditBoundary}
+                            title="Save"
+                          >
+                            <ha-icon icon="mdi:check"></ha-icon>
+                          </button>
+                          <button
+                            class="edit-action cancel"
+                            ?disabled=${this._busy}
+                            @click=${this._cancelEditBoundary}
+                            title="Cancel"
+                          >
+                            <ha-icon icon="mdi:close"></ha-icon>
+                          </button>
+                        `
+                      : html`
+                          <span
+                            class="boundary-time ${editable ? "clickable" : ""}"
+                            @click=${editable ? () => this._startEditBoundary(i) : nothing}
+                            title=${editable ? "Click to adjust boundary" : ""}
+                          >
+                            ↕ ${formatTime(p.end)}
+                          </span>
+                        `}
+                  </div>
+                `
+              : nothing}
+          `;
+        })}
+      </div>
+    `;
+  }
+
+  private _renderEventList(events: any[]) {
+    if (events.length === 0) {
+      return html`<p class="empty-text">No events recorded.</p>`;
+    }
+    return html`
+      <div class="event-list">
+        ${events.map(
+          (e) => html`
+            <div class="event-item">
+              <span class="event-type ${e.event_type}">
+                ${e.event_type === "awake"
+                  ? "Woke up"
+                  : e.event_type === "still_awake"
+                    ? "Still awake"
+                    : "Fell asleep"}
+              </span>
+              <span class="event-time">${formatTime(e.timestamp)}</span>
+              <span class="event-source">${e.source}</span>
+            </div>
+          `
+        )}
       </div>
     `;
   }
@@ -382,59 +466,152 @@ export class NightDetailView extends LitElement {
       .timeline-section {
         margin: var(--ha-space-4, 16px) 0;
       }
-      .pulse-list {
+      .section-header {
         display: flex;
-        flex-direction: column;
-        gap: var(--ha-space-2, 8px);
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: var(--ha-space-2, 8px);
       }
-      .pulse-item {
+      .section-header h3 {
+        margin: 0;
+      }
+      .toggle-btn {
         display: flex;
         align-items: center;
-        gap: var(--ha-space-3, 12px);
-        padding: var(--ha-space-2, 8px) var(--ha-space-3, 12px);
+        gap: var(--ha-space-1, 4px);
+        background: none;
+        border: none;
+        padding: 0;
+        font: inherit;
+        color: inherit;
+        cursor: pointer;
+        font-size: var(--ha-font-size-m, 14px);
+        font-weight: var(--ha-font-weight-medium, 500);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .undo-btn {
+        display: flex;
+        align-items: center;
+        gap: var(--ha-space-1, 4px);
+        padding: var(--ha-space-1, 4px) var(--ha-space-3, 12px);
+        border: 1px solid var(--divider-color, #e0e0e0);
+        border-radius: var(--ha-border-radius-md, 8px);
+        background: var(--card-background-color, white);
+        color: var(--primary-text-color);
+        font-size: var(--ha-font-size-s, 12px);
+        cursor: pointer;
+        font-family: inherit;
+        --mdc-icon-size: 16px;
+      }
+      .undo-btn:hover {
+        background: var(--secondary-background-color, #f5f5f5);
+      }
+      .undo-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      /* Phase list */
+      .phase-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+      }
+      .phase-item {
+        display: flex;
+        flex-direction: column;
         background: var(--card-background-color, white);
         border-radius: var(--ha-border-radius-md, 8px);
         border: 1px solid var(--divider-color, #e0e0e0);
-        position: relative;
+        padding: var(--ha-space-2, 8px) var(--ha-space-3, 12px);
+        border-left: 4px solid var(--divider-color, #e0e0e0);
       }
-      .pulse-item.editing {
-        border-color: var(--primary-color, #03a9f4);
+      .phase-item.asleep {
+        border-left-color: var(--sleep-color-asleep, #42a5f5);
       }
-      .pulse-type {
+      .phase-item.awake {
+        border-left-color: var(--sleep-color-awake, #ef5350);
+      }
+      .phase-row {
+        display: flex;
+        align-items: center;
+        gap: var(--ha-space-3, 12px);
+      }
+      .phase-state {
         font-size: var(--ha-font-size-s, 12px);
         font-weight: var(--ha-font-weight-medium, 500);
         padding: 2px var(--ha-space-2, 8px);
         border-radius: var(--ha-border-radius-sm, 4px);
         color: white;
         white-space: nowrap;
+        min-width: 60px;
+        text-align: center;
       }
-      .pulse-type.awake {
+      .phase-state.asleep {
+        background: var(--sleep-color-asleep, #42a5f5);
+      }
+      .phase-state.awake {
         background: var(--sleep-color-awake, #ef5350);
       }
-      .pulse-type.still_awake {
-        background: var(--sleep-color-pulse, #ff9800);
-      }
-      .pulse-type.clickable {
-        cursor: pointer;
-        transition: opacity 0.15s;
-      }
-      .pulse-type.clickable:hover {
-        opacity: 0.75;
-      }
-      .pulse-time {
+      .phase-times {
         font-size: var(--ha-font-size-m, 14px);
         flex: 1;
       }
-      .pulse-time.clickable {
+      .phase-duration {
+        font-size: var(--ha-font-size-s, 12px);
+        color: var(--secondary-text-color);
+      }
+      .phase-action {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        border: none;
+        border-radius: 50%;
+        background: transparent;
+        color: var(--secondary-text-color);
         cursor: pointer;
-        padding: 2px 6px;
+        --mdc-icon-size: 18px;
+      }
+      .phase-action:hover {
+        background: var(--secondary-background-color, #f5f5f5);
+        color: var(--primary-text-color);
+      }
+      .phase-action.delete:hover {
+        background: var(--sleep-color-awake, #ef5350);
+        color: white;
+      }
+      .phase-action:disabled {
+        opacity: 0.3;
+        cursor: not-allowed;
+      }
+
+      /* Boundary between phases */
+      .boundary {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--ha-space-2, 8px);
+        padding: var(--ha-space-1, 4px) 0;
+        margin: 0 var(--ha-space-3, 12px);
+      }
+      .boundary-time {
+        font-size: var(--ha-font-size-s, 12px);
+        color: var(--secondary-text-color);
+        padding: 2px 8px;
         border-radius: var(--ha-border-radius-sm, 4px);
       }
-      .pulse-time.clickable:hover {
+      .boundary-time.clickable {
+        cursor: pointer;
+      }
+      .boundary-time.clickable:hover {
         background: var(--secondary-background-color, #f5f5f5);
+        color: var(--primary-color, #03a9f4);
       }
       .time-input {
-        flex: 1;
         font-size: var(--ha-font-size-m, 14px);
         padding: 2px 6px;
         border: 1px solid var(--primary-color, #03a9f4);
@@ -470,66 +647,52 @@ export class NightDetailView extends LitElement {
         opacity: 0.5;
         cursor: not-allowed;
       }
-      .section-header {
+
+      /* Event list */
+      .event-list {
         display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: var(--ha-space-2, 8px);
-      }
-      .section-header h3 {
-        margin: 0;
-      }
-      .undo-btn {
-        display: flex;
-        align-items: center;
+        flex-direction: column;
         gap: var(--ha-space-1, 4px);
-        padding: var(--ha-space-1, 4px) var(--ha-space-3, 12px);
-        border: 1px solid var(--divider-color, #e0e0e0);
-        border-radius: var(--ha-border-radius-md, 8px);
-        background: var(--card-background-color, white);
-        color: var(--primary-text-color);
-        font-size: var(--ha-font-size-s, 12px);
-        cursor: pointer;
-        font-family: inherit;
-        --mdc-icon-size: 16px;
       }
-      .undo-btn:hover {
-        background: var(--secondary-background-color, #f5f5f5);
-      }
-      .undo-btn:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-      }
-      .pulse-source {
-        font-size: var(--ha-font-size-s, 12px);
-        color: var(--secondary-text-color);
-      }
-      .delete-btn {
+      .event-item {
         display: flex;
         align-items: center;
-        justify-content: center;
-        width: 28px;
-        height: 28px;
-        padding: 0;
-        border: none;
-        border-radius: 50%;
-        background: transparent;
-        color: var(--secondary-text-color);
-        cursor: pointer;
-        --mdc-icon-size: 18px;
+        gap: var(--ha-space-3, 12px);
+        padding: var(--ha-space-1, 4px) var(--ha-space-3, 12px);
+        background: var(--secondary-background-color, #f5f5f5);
+        border-radius: var(--ha-border-radius-sm, 4px);
+        font-size: var(--ha-font-size-s, 12px);
       }
-      .delete-btn:hover {
-        background: var(--sleep-color-awake, #ef5350);
+      .event-type {
+        font-weight: var(--ha-font-weight-medium, 500);
+        padding: 1px 6px;
+        border-radius: var(--ha-border-radius-sm, 4px);
         color: white;
+        white-space: nowrap;
+        min-width: 80px;
+        text-align: center;
       }
-      .delete-btn:disabled {
-        opacity: 0.3;
-        cursor: not-allowed;
+      .event-type.awake {
+        background: var(--sleep-color-awake, #ef5350);
       }
-      .no-pulses {
+      .event-type.still_awake {
+        background: var(--sleep-color-pulse, #ff9800);
+      }
+      .event-type.fell_asleep {
+        background: var(--sleep-color-asleep, #42a5f5);
+      }
+      .event-time {
+        flex: 1;
+      }
+      .event-source {
+        color: var(--secondary-text-color);
+      }
+
+      .empty-text {
         color: var(--secondary-text-color);
         font-size: var(--ha-font-size-s, 12px);
       }
+
       .finalize-section {
         margin-top: var(--ha-space-6, 24px);
         text-align: center;

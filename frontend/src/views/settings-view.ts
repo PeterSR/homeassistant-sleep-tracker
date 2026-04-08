@@ -116,8 +116,8 @@ export class SettingsView extends LitElement {
 
   private _phoneAutomationYaml(): string {
     const uid = this.userState.config!.user_id;
-    return `alias: "Sleep Tracker - Phone awake pulse"
-description: "Send an awake pulse when phone screen turns on during sleep"
+    return `alias: "Sleep Tracker - Phone awake event"
+description: "Send an awake event when phone screen turns on during sleep"
 triggers:
   - trigger: state
     entity_id: binary_sensor.YOUR_PHONE_interactive
@@ -129,7 +129,7 @@ conditions:
     entity_id: binary_sensor.sleep_tracker_${this._slug}_sleeping
     state: "on"
 actions:
-  - action: sleep_tracker.pulse_awake
+  - action: sleep_tracker.event_awake
     data:
       user_id: "${uid}"
       source: phone_sensor`;
@@ -137,8 +137,8 @@ actions:
 
   private _buttonAutomationYaml(): string {
     const uid = this.userState.config!.user_id;
-    return `alias: "Sleep Tracker - Button awake pulse"
-description: "Send an awake pulse when bedside button is pressed during sleep"
+    return `alias: "Sleep Tracker - Button awake event"
+description: "Send an awake event when bedside button is pressed during sleep"
 triggers:
   - trigger: state
     entity_id: YOUR_BUTTON_ENTITY
@@ -148,7 +148,7 @@ conditions:
     entity_id: binary_sensor.sleep_tracker_${this._slug}_sleeping
     state: "on"
 actions:
-  - action: sleep_tracker.pulse_awake
+  - action: sleep_tracker.event_awake
     data:
       user_id: "${uid}"
       source: button`;
@@ -156,7 +156,7 @@ actions:
 
   private _serviceCallYaml(): string {
     const uid = this.userState.config!.user_id;
-    return `action: sleep_tracker.pulse_awake
+    return `action: sleep_tracker.event_awake
 data:
   user_id: "${uid}"
   source: automation`;
@@ -168,7 +168,21 @@ data:
   }
 
   render() {
-    if (!this.userState?.config) return nothing;
+    if (!this.userState) {
+      return html`<div class="container"><p>Loading...</p></div>`;
+    }
+    if (!this.userState.config) {
+      return html`
+        <div class="container">
+          <ha-card>
+            <div class="card-header">Sleep tracking not set up</div>
+            <p class="hint">
+              Go to the main page and click "Enable Sleep Tracking" to set up your account.
+            </p>
+          </ha-card>
+        </div>
+      `;
+    }
     const uid = this.userState.config.user_id;
 
     return html`
@@ -249,7 +263,7 @@ data:
         <ha-card class="info-card">
           <div class="card-header">Your User ID</div>
           <p class="hint">
-            Use this ID in automations to send pulses via services:
+            Use this ID in automations to send events via services:
           </p>
           <div class="code-block">
             <code>${uid}</code>
@@ -282,8 +296,8 @@ data:
           <div class="example">
             <div class="example-header">
               <div>
-                <div class="example-title">Phone Screen Pulse</div>
-                <p class="hint">Sends an awake pulse when your phone screen turns on during sleep.
+                <div class="example-title">Phone Screen Event</div>
+                <p class="hint">Sends an awake event when your phone screen turns on during sleep.
                   Replace <code>YOUR_PHONE_interactive</code> with your phone's interactive sensor.</p>
               </div>
               <button
@@ -299,8 +313,8 @@ data:
           <div class="example">
             <div class="example-header">
               <div>
-                <div class="example-title">Bedside Button Pulse</div>
-                <p class="hint">Sends an awake pulse when a bedside button/switch is pressed during sleep.
+                <div class="example-title">Bedside Button Event</div>
+                <p class="hint">Sends an awake event when a bedside button/switch is pressed during sleep.
                   Replace <code>YOUR_BUTTON_ENTITY</code> with your button entity.</p>
               </div>
               <button
@@ -324,12 +338,20 @@ data:
               <span class="hint">End the active sleep session</span>
             </div>
             <div class="service-item">
-              <code>sleep_tracker.pulse_awake</code>
-              <span class="hint">Record a momentary wakeup</span>
+              <code>sleep_tracker.reopen_session</code>
+              <span class="hint">Reopen a stopped (not finalized) session</span>
             </div>
             <div class="service-item">
-              <code>sleep_tracker.pulse_still_awake</code>
-              <span class="hint">Confirm still awake (extends awake window)</span>
+              <code>sleep_tracker.event_awake</code>
+              <span class="hint">Record an "awake" event (auto-demoted to still_awake when in awake state)</span>
+            </div>
+            <div class="service-item">
+              <code>sleep_tracker.event_still_awake</code>
+              <span class="hint">Record a "still awake" event (extends awake window)</span>
+            </div>
+            <div class="service-item">
+              <code>sleep_tracker.event_fell_asleep</code>
+              <span class="hint">Force an immediate awake-to-asleep transition (bypasses latency model)</span>
             </div>
             <div class="service-item">
               <code>sleep_tracker.export_session</code>
@@ -353,7 +375,7 @@ data:
               @click=${() => this._showEntity(`sensor.sleep_tracker_${this._slug}_last_awake`)}
             >
               <code>sensor.sleep_tracker_${this._slug}_last_awake</code>
-              <span class="hint">Timestamp of last awake pulse</span>
+              <span class="hint">Timestamp of last event</span>
             </div>
             <div
               class="service-item clickable"

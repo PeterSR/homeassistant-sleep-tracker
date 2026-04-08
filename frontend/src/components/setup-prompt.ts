@@ -22,7 +22,7 @@ export class SetupPrompt extends LitElement {
       <div class="empty-state">
         <ha-icon icon="mdi:sleep" style="--mdc-icon-size: 64px; opacity: 0.5"></ha-icon>
         <h2>Sleep Tracking</h2>
-        <p>Track your sleep patterns with pulse-based timeline reconstruction.</p>
+        <p>Track your sleep patterns with event-based phase reconstruction.</p>
         <button class="enable-btn" @click=${this._enable}>
           Enable Sleep Tracking
         </button>
