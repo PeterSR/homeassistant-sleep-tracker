@@ -229,7 +229,6 @@ export class NightDetailView extends LitElement {
           <div class="timeline-section">
             <sleep-tracker-timeline-bar
               .phases=${phases}
-              .events=${s.events}
               .startedAt=${s.started_at}
               .endedAt=${s.ended_at}
             ></sleep-tracker-timeline-bar>
@@ -278,7 +277,19 @@ export class NightDetailView extends LitElement {
             </h3>
           </div>
           ${this._showEvents
-            ? this._renderEventList(s.events)
+            ? html`
+                <div class="events-timeline">
+                  <sleep-tracker-timeline-bar
+                    .phases=${phases}
+                    .events=${s.events}
+                    .startedAt=${s.started_at}
+                    .endedAt=${s.ended_at}
+                    compact
+                    .showEvents=${true}
+                  ></sleep-tracker-timeline-bar>
+                </div>
+                ${this._renderEventList(s.events)}
+              `
             : nothing}
         </div>
 
@@ -648,6 +659,11 @@ export class NightDetailView extends LitElement {
         cursor: not-allowed;
       }
 
+      /* Events compact timeline */
+      .events-timeline {
+        margin-bottom: var(--ha-space-3, 12px);
+      }
+
       /* Event list */
       .event-list {
         display: flex;
@@ -673,7 +689,7 @@ export class NightDetailView extends LitElement {
         text-align: center;
       }
       .event-type.awake {
-        background: var(--sleep-color-awake, #ef5350);
+        background: var(--sleep-color-event-wake, #c2185b);
       }
       .event-type.still_awake {
         background: var(--sleep-color-pulse, #ff9800);

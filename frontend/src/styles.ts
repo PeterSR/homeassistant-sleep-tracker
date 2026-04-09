@@ -6,6 +6,7 @@ export const tokens = css`
     --sleep-color-asleep: #42a5f5;
     --sleep-color-deep-sleep: #1565c0;
     --sleep-color-pulse: #ff9800;
+    --sleep-color-event-wake: #c2185b;
     --sleep-color-success: #66bb6a;
   }
 `;

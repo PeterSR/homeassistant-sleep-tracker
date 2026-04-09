@@ -126,6 +126,7 @@ export class MainView extends LitElement {
                 .events=${active.events}
                 .startedAt=${active.started_at}
                 .endedAt=${null}
+                .showEvents=${true}
               ></sleep-tracker-timeline-bar>
             </div>
 

@@ -11,6 +11,7 @@ export class TimelineBar extends LitElement {
   @property() startedAt = "";
   @property() endedAt: string | null = null;
   @property({ type: Boolean }) compact = false;
+  @property({ type: Boolean }) showEvents = false;
 
   private get _totalMs(): number {
     if (!this.startedAt) return 0;
@@ -54,7 +55,7 @@ export class TimelineBar extends LitElement {
               ></div>
             `;
           })}
-          ${!this.compact
+          ${this.showEvents && this.events.length
             ? this.events.map((event) => {
                 const pos = this._pct(event.timestamp);
                 return html`
@@ -116,11 +117,11 @@ export class TimelineBar extends LitElement {
         z-index: 1;
       }
       .event-marker.awake {
-        background: var(--sleep-color-pulse, #ff9800);
+        background: var(--sleep-color-event-wake, #c2185b);
       }
       .event-marker.still_awake {
         background: var(--sleep-color-pulse, #ff9800);
-        opacity: 0.6;
+        opacity: 0.7;
       }
       .event-marker.fell_asleep {
         background: var(--sleep-color-asleep, #42a5f5);
