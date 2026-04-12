@@ -19,6 +19,7 @@ class UserConfig:
     export_url: str | None = None
     export_headers: dict[str, str] = field(default_factory=dict)
     retention_days: int = 90
+    checklist: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -31,6 +32,7 @@ class UserConfig:
             "export_url": self.export_url,
             "export_headers": self.export_headers,
             "retention_days": self.retention_days,
+            "checklist": self.checklist,
         }
 
     @classmethod
@@ -45,6 +47,7 @@ class UserConfig:
             export_url=data.get("export_url"),
             export_headers=data.get("export_headers", {}),
             retention_days=data.get("retention_days", 90),
+            checklist=data.get("checklist", []),
         )
 
 

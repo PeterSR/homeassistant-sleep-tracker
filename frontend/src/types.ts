@@ -1,11 +1,23 @@
+export interface HassEntity {
+  entity_id: string;
+  state: string;
+  attributes: Record<string, any>;
+}
+
 export interface HomeAssistant {
   callWS: <T = any>(msg: Record<string, unknown>) => Promise<T>;
+  callService: (
+    domain: string,
+    service: string,
+    data?: Record<string, unknown>
+  ) => Promise<void>;
   connection: {
     subscribeMessage: <T>(
       callback: (msg: T) => void,
       params: Record<string, unknown>
     ) => Promise<() => void>;
   };
+  states: Record<string, HassEntity>;
   user: { id: string; name: string; is_admin: boolean };
 }
 
@@ -64,6 +76,13 @@ export interface SleepSession {
   undo_count?: number;
 }
 
+export interface ChecklistItem {
+  type: "entity" | "text";
+  entity_id?: string;
+  desired_state?: string;
+  text?: string;
+}
+
 export interface UserConfig {
   user_id: string;
   enabled: boolean;
@@ -74,6 +93,7 @@ export interface UserConfig {
   export_url: string | null;
   export_headers: Record<string, string>;
   retention_days: number;
+  checklist: ChecklistItem[];
 }
 
 export interface UserState {

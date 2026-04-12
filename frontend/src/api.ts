@@ -1,4 +1,4 @@
-import type { EventType, HomeAssistant, SleepSession, UserConfig, UserState } from "./types";
+import type { ChecklistItem, EventType, HomeAssistant, SleepSession, UserConfig, UserState } from "./types";
 
 export class SleepTrackerApi {
   constructor(private hass: HomeAssistant) {}
@@ -121,6 +121,7 @@ export class SleepTrackerApi {
         | "export_url"
         | "export_headers"
         | "retention_days"
+        | "checklist"
       >
     >
   ): Promise<UserConfig> {

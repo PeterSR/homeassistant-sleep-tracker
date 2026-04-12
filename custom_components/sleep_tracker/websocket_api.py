@@ -252,6 +252,7 @@ async def ws_setup_user(
         vol.Optional("retention_days"): vol.All(
             int, vol.Range(min=7, max=365)
         ),
+        vol.Optional("checklist"): list,
     }
 )
 @websocket_api.async_response

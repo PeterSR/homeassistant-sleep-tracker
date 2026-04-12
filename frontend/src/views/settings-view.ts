@@ -1,6 +1,6 @@
 import { LitElement, html, css, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import type { HomeAssistant, UserState, ToolbarConfig } from "../types";
+import type { HomeAssistant, UserState, ToolbarConfig, ChecklistItem } from "../types";
 import type { SleepTrackerApi } from "../api";
 import { tokens, viewStyles, formStyles, cardStyles } from "../styles";
 
@@ -18,6 +18,12 @@ export class SettingsView extends LitElement {
   @state() private _retentionDays = 90;
   @state() private _saving = false;
   @state() private _dirty = false;
+  @state() private _checklist: ChecklistItem[] = [];
+  @state() private _wizardOpen = false;
+  @state() private _wizardStep: "type" | "entity" | "text" = "type";
+  @state() private _wizardEntityId = "";
+  @state() private _wizardDesiredState = "";
+  @state() private _wizardText = "";
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -39,6 +45,7 @@ export class SettingsView extends LitElement {
       this._autoFinalize = config.auto_finalize_hours;
       this._exportUrl = config.export_url || "";
       this._retentionDays = config.retention_days;
+      this._checklist = [...(config.checklist || [])];
     }
   }
 
@@ -61,6 +68,7 @@ export class SettingsView extends LitElement {
         auto_finalize_hours: this._autoFinalize,
         export_url: this._exportUrl || null,
         retention_days: this._retentionDays,
+        checklist: this._checklist,
       });
       this._dirty = false;
     } catch (err) {
@@ -93,6 +101,47 @@ export class SettingsView extends LitElement {
   private _onRetentionChange(e: Event) {
     this._retentionDays = parseInt((e.target as HTMLInputElement).value) || 90;
     this._dirty = true;
+  }
+
+  private _openWizard() {
+    this._wizardStep = "type";
+    this._wizardEntityId = "";
+    this._wizardDesiredState = "";
+    this._wizardText = "";
+    this._wizardOpen = true;
+  }
+
+  private _closeWizard() {
+    this._wizardOpen = false;
+  }
+
+  private async _saveChecklist() {
+    await this.api.updateSettings({ checklist: this._checklist });
+  }
+
+  private async _wizardConfirm() {
+    if (this._wizardStep === "entity" && this._wizardEntityId) {
+      const item: ChecklistItem = {
+        type: "entity",
+        entity_id: this._wizardEntityId,
+      };
+      if (this._wizardDesiredState) {
+        item.desired_state = this._wizardDesiredState;
+      }
+      this._checklist = [...this._checklist, item];
+    } else if (this._wizardStep === "text" && this._wizardText) {
+      this._checklist = [
+        ...this._checklist,
+        { type: "text", text: this._wizardText },
+      ];
+    }
+    this._closeWizard();
+    await this._saveChecklist();
+  }
+
+  private async _removeChecklistItem(index: number) {
+    this._checklist = this._checklist.filter((_, i) => i !== index);
+    await this._saveChecklist();
   }
 
   @state() private _copied: string | null = null;
@@ -165,6 +214,100 @@ data:
   private get _slug(): string {
     const name = this.userState.config?.display_name || "";
     return name.toLowerCase().replace(/\s+/g, "_");
+  }
+
+  private _renderWizard() {
+    return html`
+      <div class="wizard-overlay" @click=${this._closeWizard}>
+        <ha-card class="wizard-card" @click=${(e: Event) => e.stopPropagation()}>
+          ${this._wizardStep === "type"
+            ? html`
+                <div class="wizard-header">Add checklist item</div>
+                <div class="wizard-type-buttons">
+                  <button
+                    class="wizard-type-btn"
+                    @click=${() => { this._wizardStep = "entity"; }}
+                  >
+                    <ha-icon icon="mdi:chip"></ha-icon>
+                    <span>Entity</span>
+                    <span class="wizard-type-hint">Show an entity's state</span>
+                  </button>
+                  <button
+                    class="wizard-type-btn"
+                    @click=${() => { this._wizardStep = "text"; }}
+                  >
+                    <ha-icon icon="mdi:text"></ha-icon>
+                    <span>Text</span>
+                    <span class="wizard-type-hint">A reminder message</span>
+                  </button>
+                </div>
+              `
+            : this._wizardStep === "entity"
+              ? html`
+                  <div class="wizard-header">
+                    <button class="wizard-back" @click=${() => { this._wizardStep = "type"; }}>
+                      <ha-icon icon="mdi:arrow-left"></ha-icon>
+                    </button>
+                    Add entity
+                  </div>
+                  <div class="wizard-form">
+                    <ha-form
+                      .hass=${this.hass}
+                      .schema=${[{ name: "entity_id", selector: { entity: {} } }]}
+                      .data=${{ entity_id: this._wizardEntityId }}
+                      .computeLabel=${() => "Entity"}
+                      @value-changed=${(e: CustomEvent) => {
+                        this._wizardEntityId = e.detail.value.entity_id || "";
+                      }}
+                    ></ha-form>
+                    <div class="field">
+                      <label>Desired state (optional)</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. off, locked, silent"
+                        .value=${this._wizardDesiredState}
+                        @input=${(e: Event) => {
+                          this._wizardDesiredState = (e.target as HTMLInputElement).value;
+                        }}
+                      />
+                      <span class="range-value">Highlights red/green on the checklist when state doesn't/does match</span>
+                    </div>
+                    <button
+                      class="save-btn"
+                      ?disabled=${!this._wizardEntityId}
+                      @click=${this._wizardConfirm}
+                    >Add</button>
+                  </div>
+                `
+              : html`
+                  <div class="wizard-header">
+                    <button class="wizard-back" @click=${() => { this._wizardStep = "type"; }}>
+                      <ha-icon icon="mdi:arrow-left"></ha-icon>
+                    </button>
+                    Add text reminder
+                  </div>
+                  <div class="wizard-form">
+                    <div class="field">
+                      <label>Reminder text</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Have you taken your medication?"
+                        .value=${this._wizardText}
+                        @input=${(e: Event) => {
+                          this._wizardText = (e.target as HTMLInputElement).value;
+                        }}
+                      />
+                    </div>
+                    <button
+                      class="save-btn"
+                      ?disabled=${!this._wizardText}
+                      @click=${this._wizardConfirm}
+                    >Add</button>
+                  </div>
+                `}
+        </ha-card>
+      </div>
+    `;
   }
 
   render() {
@@ -258,6 +401,57 @@ data:
               ${this._saving ? "Saving..." : "Save"}
             </button>
           </div>
+        </ha-card>
+
+        <ha-card class="info-card">
+          <div class="card-header">Pre-Sleep Checklist</div>
+          <p class="hint">
+            Items shown on the main screen before starting sleep.
+          </p>
+
+          ${this._checklist.length > 0
+            ? html`
+                <div class="checklist-list">
+                  ${this._checklist.map(
+                    (item, i) => html`
+                      <div class="checklist-row">
+                        <div class="checklist-row-info">
+                          <ha-icon
+                            icon=${item.type === "entity"
+                              ? "mdi:chip"
+                              : "mdi:text"}
+                          ></ha-icon>
+                          <div class="checklist-row-detail">
+                            <span class="checklist-row-primary">
+                              ${item.type === "entity"
+                                ? item.entity_id
+                                : item.text}
+                            </span>
+                            ${item.desired_state
+                              ? html`<span class="checklist-row-secondary"
+                                  >Desired: ${item.desired_state}</span
+                                >`
+                              : nothing}
+                          </div>
+                        </div>
+                        <button
+                          class="remove-btn"
+                          @click=${() => this._removeChecklistItem(i)}
+                        >
+                          <ha-icon icon="mdi:close"></ha-icon>
+                        </button>
+                      </div>
+                    `
+                  )}
+                </div>
+              `
+            : nothing}
+
+          <button class="add-btn" @click=${this._openWizard}>
+            <ha-icon icon="mdi:plus"></ha-icon> Add item
+          </button>
+
+          ${this._wizardOpen ? this._renderWizard() : nothing}
         </ha-card>
 
         <ha-card class="info-card">
@@ -527,6 +721,161 @@ data:
       }
       .service-item.clickable:hover {
         background: var(--secondary-background-color, #f5f5f5);
+      }
+      .checklist-list {
+        display: flex;
+        flex-direction: column;
+        gap: var(--ha-space-2, 8px);
+        margin-bottom: var(--ha-space-4, 16px);
+      }
+      .checklist-row {
+        display: flex;
+        align-items: center;
+        gap: var(--ha-space-2, 8px);
+        padding: var(--ha-space-2, 8px) var(--ha-space-3, 12px);
+        background: var(--secondary-background-color, #f5f5f5);
+        border-radius: var(--ha-border-radius-md, 8px);
+      }
+      .checklist-row-info {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: var(--ha-space-2, 8px);
+        min-width: 0;
+      }
+      .checklist-row-info ha-icon {
+        --mdc-icon-size: 18px;
+        color: var(--secondary-text-color);
+        flex-shrink: 0;
+      }
+      .checklist-row-detail {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+      .checklist-row-primary {
+        font-size: var(--ha-font-size-s, 12px);
+        font-family: "Roboto Mono", "SFMono-Regular", monospace;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .checklist-row-secondary {
+        font-size: var(--ha-font-size-s, 12px);
+        color: var(--secondary-text-color);
+      }
+      .remove-btn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: var(--secondary-text-color);
+        padding: var(--ha-space-1, 4px);
+        border-radius: 50%;
+        display: flex;
+        flex-shrink: 0;
+      }
+      .remove-btn:hover {
+        color: var(--sleep-color-awake, #ef5350);
+        background: rgba(239, 83, 80, 0.1);
+      }
+      .remove-btn ha-icon {
+        --mdc-icon-size: 18px;
+      }
+      .add-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--ha-space-1, 4px);
+        width: 100%;
+        padding: var(--ha-space-3, 12px);
+        background: var(--card-background-color, white);
+        border: 1px dashed var(--divider-color, #e0e0e0);
+        border-radius: var(--ha-border-radius-md, 8px);
+        font-size: var(--ha-font-size-m, 14px);
+        cursor: pointer;
+        font-family: inherit;
+        color: var(--secondary-text-color);
+      }
+      .add-btn:hover {
+        background: var(--secondary-background-color, #f5f5f5);
+        color: var(--primary-text-color);
+      }
+      .add-btn ha-icon {
+        --mdc-icon-size: 18px;
+      }
+      .wizard-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+        padding: var(--ha-space-4, 16px);
+      }
+      .wizard-card {
+        width: 100%;
+        max-width: 400px;
+        padding: var(--ha-space-6, 24px);
+      }
+      .wizard-header {
+        display: flex;
+        align-items: center;
+        gap: var(--ha-space-2, 8px);
+        font-size: var(--ha-font-size-l, 16px);
+        font-weight: var(--ha-font-weight-medium, 500);
+        margin-bottom: var(--ha-space-5, 20px);
+      }
+      .wizard-back {
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: var(--secondary-text-color);
+        padding: var(--ha-space-1, 4px);
+        border-radius: 50%;
+        display: flex;
+      }
+      .wizard-back:hover {
+        background: var(--secondary-background-color, #f5f5f5);
+      }
+      .wizard-type-buttons {
+        display: flex;
+        flex-direction: column;
+        gap: var(--ha-space-3, 12px);
+      }
+      .wizard-type-btn {
+        display: flex;
+        align-items: center;
+        gap: var(--ha-space-3, 12px);
+        padding: var(--ha-space-4, 16px);
+        background: var(--secondary-background-color, #f5f5f5);
+        border: 1px solid var(--divider-color, #e0e0e0);
+        border-radius: var(--ha-border-radius-md, 8px);
+        cursor: pointer;
+        font-family: inherit;
+        font-size: var(--ha-font-size-m, 14px);
+        font-weight: var(--ha-font-weight-medium, 500);
+        color: var(--primary-text-color);
+        text-align: left;
+        transition: border-color 0.15s;
+      }
+      .wizard-type-btn:hover {
+        border-color: var(--primary-color, #03a9f4);
+      }
+      .wizard-type-btn ha-icon {
+        --mdc-icon-size: 24px;
+        color: var(--secondary-text-color);
+      }
+      .wizard-type-hint {
+        font-size: var(--ha-font-size-s, 12px);
+        font-weight: normal;
+        color: var(--secondary-text-color);
+        margin-left: auto;
+      }
+      .wizard-form {
+        display: flex;
+        flex-direction: column;
+        gap: var(--ha-space-4, 16px);
       }
     `,
   ];
