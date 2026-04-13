@@ -294,6 +294,20 @@ class SleepTrackerCoordinator:
         )
         return self._session_to_dict(session)
 
+    # --- Session deletion ---
+
+    async def async_delete_session(self, user_id: str, session_id: str) -> None:
+        """Delete any session (active, stopped, finalized)."""
+        session = self.store.get_session(session_id)
+        if session is None or session.user_id != user_id:
+            raise ValueError("Session not found")
+
+        self._edit_history.pop(session_id, None)
+        self.store.delete_session(session_id)
+
+        self._notify_listeners(user_id)
+        _LOGGER.info("Session %s deleted for user %s", session_id, user_id)
+
     # --- Phase editing (only for stopped, non-finalized sessions) ---
 
     def _push_edit_history(self, session: SleepSession) -> None:

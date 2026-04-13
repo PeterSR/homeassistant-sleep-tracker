@@ -24,6 +24,7 @@ export class NightDetailView extends LitElement {
   @state() private _editingBoundary: BoundaryEdit | null = null;
   @state() private _splittingPhaseIndex: number | null = null;
   @state() private _showEvents = false;
+  @state() private _confirmDelete = false;
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -179,6 +180,30 @@ export class NightDetailView extends LitElement {
     return formatDuration(ms / 60000);
   }
 
+  private _navigate(path: string) {
+    this.dispatchEvent(
+      new CustomEvent("navigate", {
+        bubbles: true,
+        composed: true,
+        detail: { path },
+      })
+    );
+  }
+
+  private async _deleteSession() {
+    if (!this._session || this._busy) return;
+    this._busy = true;
+    try {
+      await this.api.deleteSession(this._session.session_id);
+      this._navigate("/history");
+    } catch (err) {
+      console.error("Delete session failed:", err);
+    } finally {
+      this._busy = false;
+      this._confirmDelete = false;
+    }
+  }
+
   private async _finalize() {
     if (!this._session || this._busy) return;
     this._busy = true;
@@ -306,6 +331,48 @@ export class NightDetailView extends LitElement {
                 <p class="finalize-hint">
                   Finalizing locks edits${this.userState.config?.export_url ? " and exports to your REST endpoint" : ""}.
                 </p>
+              </div>
+            `
+          : nothing}
+
+        <div class="delete-section">
+          <button
+            class="delete-session-btn"
+            @click=${() => { this._confirmDelete = true; }}
+          >
+            <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+            Delete Session
+          </button>
+        </div>
+
+        ${this._confirmDelete
+          ? html`
+              <div class="confirm-overlay" @click=${() => { this._confirmDelete = false; }}>
+                <ha-card class="confirm-card" @click=${(e: Event) => e.stopPropagation()}>
+                  <h3>Delete this session?</h3>
+                  <p>This will permanently remove the session and all its data.</p>
+                  ${s.exported
+                    ? html`<p class="export-note">
+                        <ha-icon icon="mdi:information-outline"></ha-icon>
+                        This session was exported and may still exist externally.
+                      </p>`
+                    : nothing}
+                  <div class="confirm-actions">
+                    <button
+                      class="confirm-cancel"
+                      @click=${() => { this._confirmDelete = false; }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      class="confirm-delete"
+                      ?disabled=${this._busy}
+                      @click=${this._deleteSession}
+                    >
+                      ${this._busy ? "Deleting..." : "Delete"}
+                    </button>
+                  </div>
+                </ha-card>
               </div>
             `
           : nothing}
@@ -732,6 +799,99 @@ export class NightDetailView extends LitElement {
         margin-top: var(--ha-space-2, 8px);
         font-size: var(--ha-font-size-s, 12px);
         color: var(--secondary-text-color);
+      }
+
+      /* Delete session */
+      .delete-section {
+        margin-top: var(--ha-space-8, 32px);
+        text-align: center;
+      }
+      .delete-session-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--ha-space-2, 8px);
+        padding: var(--ha-space-2, 8px) var(--ha-space-4, 16px);
+        background: none;
+        border: none;
+        color: var(--secondary-text-color);
+        font-size: var(--ha-font-size-s, 12px);
+        cursor: pointer;
+        font-family: inherit;
+        --mdc-icon-size: 16px;
+      }
+      .delete-session-btn:hover {
+        color: var(--sleep-color-awake, #ef5350);
+      }
+
+      /* Confirm overlay */
+      .confirm-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+      }
+      .confirm-card {
+        padding: var(--ha-space-6, 24px);
+        max-width: 360px;
+        width: 90%;
+      }
+      .confirm-card h3 {
+        margin: 0 0 var(--ha-space-3, 12px);
+        font-size: var(--ha-font-size-l, 16px);
+        font-weight: var(--ha-font-weight-medium, 500);
+      }
+      .confirm-card p {
+        margin: 0 0 var(--ha-space-3, 12px);
+        font-size: var(--ha-font-size-m, 14px);
+        color: var(--secondary-text-color);
+      }
+      .export-note {
+        display: flex;
+        align-items: center;
+        gap: var(--ha-space-2, 8px);
+        padding: var(--ha-space-2, 8px) var(--ha-space-3, 12px);
+        background: #e3f2fd;
+        border-radius: var(--ha-border-radius-sm, 4px);
+        font-size: var(--ha-font-size-s, 12px) !important;
+        color: var(--primary-text-color) !important;
+        --mdc-icon-size: 16px;
+      }
+      .confirm-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: var(--ha-space-3, 12px);
+        margin-top: var(--ha-space-4, 16px);
+      }
+      .confirm-cancel {
+        padding: var(--ha-space-2, 8px) var(--ha-space-4, 16px);
+        background: none;
+        border: 1px solid var(--divider-color, #e0e0e0);
+        border-radius: var(--ha-border-radius-md, 8px);
+        font-size: var(--ha-font-size-m, 14px);
+        cursor: pointer;
+        font-family: inherit;
+        color: var(--primary-text-color);
+      }
+      .confirm-cancel:hover {
+        background: var(--secondary-background-color, #f5f5f5);
+      }
+      .confirm-delete {
+        padding: var(--ha-space-2, 8px) var(--ha-space-4, 16px);
+        background: var(--sleep-color-awake, #ef5350);
+        color: white;
+        border: none;
+        border-radius: var(--ha-border-radius-md, 8px);
+        font-size: var(--ha-font-size-m, 14px);
+        font-weight: var(--ha-font-weight-medium, 500);
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .confirm-delete:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
       }
     `,
   ];

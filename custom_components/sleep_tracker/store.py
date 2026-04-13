@@ -97,6 +97,12 @@ class SleepTrackerStore:
         self.async_save()
         return session
 
+    def delete_session(self, session_id: str) -> None:
+        """Delete a session by ID."""
+        if session_id in self.sessions:
+            del self.sessions[session_id]
+            self.async_save()
+
     def get_session(self, session_id: str) -> SleepSession | None:
         """Get a session by ID."""
         return self.sessions.get(session_id)

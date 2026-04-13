@@ -31,6 +31,7 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_split_phase)
     websocket_api.async_register_command(hass, ws_adjust_phase_boundary)
     websocket_api.async_register_command(hass, ws_undo_edit)
+    websocket_api.async_register_command(hass, ws_delete_session)
     websocket_api.async_register_command(hass, ws_finalize_session)
     websocket_api.async_register_command(hass, ws_export_session)
     websocket_api.async_register_command(hass, ws_subscribe)
@@ -387,6 +388,29 @@ async def ws_undo_edit(
         connection.send_result(msg["id"], session)
     except ValueError as err:
         connection.send_error(msg["id"], "undo_failed", str(err))
+
+
+# --- Delete Session ---
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "sleep_tracker/delete_session",
+        vol.Required("session_id"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_delete_session(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Delete a session permanently."""
+    coordinator = _get_data(hass)["coordinator"]
+    user_id = connection.user.id
+
+    try:
+        await coordinator.async_delete_session(user_id, msg["session_id"])
+        connection.send_result(msg["id"], {"success": True})
+    except ValueError as err:
+        connection.send_error(msg["id"], "delete_failed", str(err))
 
 
 # --- Finalize Session ---

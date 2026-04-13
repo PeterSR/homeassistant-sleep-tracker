@@ -104,6 +104,13 @@ export class SleepTrackerApi {
     });
   }
 
+  async deleteSession(session_id: string): Promise<void> {
+    await this.hass.callWS({
+      type: "sleep_tracker/delete_session",
+      session_id,
+    });
+  }
+
   async finalizeSession(session_id: string): Promise<SleepSession> {
     return this.hass.callWS({
       type: "sleep_tracker/finalize_session",
