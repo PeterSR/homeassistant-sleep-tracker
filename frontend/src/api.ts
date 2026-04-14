@@ -139,6 +139,26 @@ export class SleepTrackerApi {
     });
   }
 
+  async updateSessionMeta(
+    session_id: string,
+    meta: {
+      note?: string | null;
+      rating_quality?: number | null;
+      rating_feeling?: number | null;
+      tags?: string[];
+    }
+  ): Promise<SleepSession> {
+    return this.hass.callWS({
+      type: "sleep_tracker/update_session_meta",
+      session_id,
+      ...meta,
+    });
+  }
+
+  async getTagUsage(): Promise<Record<string, number>> {
+    return this.hass.callWS({ type: "sleep_tracker/get_tag_usage" });
+  }
+
   async deleteSession(session_id: string): Promise<void> {
     await this.hass.callWS({
       type: "sleep_tracker/delete_session",
@@ -166,6 +186,14 @@ export class SleepTrackerApi {
         | "export_headers"
         | "retention_days"
         | "checklist"
+        | "show_note"
+        | "show_rating_quality"
+        | "show_rating_feeling"
+        | "show_tags"
+        | "available_tags"
+        | "show_environment"
+        | "environment_entities"
+        | "sleep_goal_minutes"
       >
     >
   ): Promise<UserConfig> {

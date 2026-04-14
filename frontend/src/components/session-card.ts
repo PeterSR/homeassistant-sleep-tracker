@@ -9,6 +9,7 @@ import "./timeline-bar";
 @customElement("sleep-tracker-session-card")
 export class SessionCard extends LitElement {
   @property({ attribute: false }) session!: SleepSession;
+  @property({ type: Number }) goalMinutes = 0;
 
   private _navigate() {
     this.dispatchEvent(
@@ -42,9 +43,31 @@ export class SessionCard extends LitElement {
         ${s.stats
           ? html`
               <div class="summary">
-                <span>${formatDuration(s.stats.total_sleep_minutes)} sleep</span>
+                <span>
+                  ${this.goalMinutes > 0
+                    ? html`<ha-icon
+                        icon=${s.stats.total_sleep_minutes >= this.goalMinutes
+                          ? "mdi:check-circle"
+                          : "mdi:circle-outline"}
+                        class="goal-icon ${s.stats.total_sleep_minutes >= this.goalMinutes ? "met" : "unmet"}"
+                      ></ha-icon>`
+                    : nothing}
+                  ${formatDuration(s.stats.total_sleep_minutes)} sleep
+                </span>
                 <span>${s.stats.awakenings} awakenings</span>
                 <span>${Math.round(s.stats.sleep_efficiency * 100)}%</span>
+              </div>
+            `
+          : nothing}
+        ${(s.rating_quality || s.rating_feeling || s.tags?.length)
+          ? html`
+              <div class="meta-row">
+                ${s.rating_quality
+                  ? html`<span class="meta-rating" title="Sleep quality">${"★".repeat(s.rating_quality)}${"☆".repeat(5 - s.rating_quality)}</span>`
+                  : nothing}
+                ${s.tags?.length
+                  ? html`<span class="meta-tags">${s.tags.join(", ")}</span>`
+                  : nothing}
               </div>
             `
           : nothing}
@@ -79,9 +102,41 @@ export class SessionCard extends LitElement {
       .summary {
         display: flex;
         justify-content: space-between;
+        align-items: center;
         margin-top: var(--ha-space-2, 8px);
         font-size: var(--ha-font-size-s, 12px);
         color: var(--secondary-text-color);
+      }
+      .summary span {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+      }
+      .goal-icon {
+        --mdc-icon-size: 14px;
+      }
+      .goal-icon.met {
+        color: var(--sleep-color-success, #66bb6a);
+      }
+      .goal-icon.unmet {
+        color: var(--secondary-text-color);
+      }
+      .meta-row {
+        display: flex;
+        gap: var(--ha-space-3, 12px);
+        margin-top: var(--ha-space-1, 4px);
+        font-size: var(--ha-font-size-s, 12px);
+        color: var(--secondary-text-color);
+      }
+      .meta-rating {
+        color: var(--sleep-color-pulse, #ff9800);
+        letter-spacing: 1px;
+      }
+      .meta-tags {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
     `,
   ];

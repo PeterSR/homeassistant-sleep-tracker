@@ -7,6 +7,7 @@ import { formatDate, formatTime, formatDuration } from "../utils";
 
 import "../components/timeline-bar";
 import "../components/night-stats";
+import "../components/session-meta";
 
 type BoundaryEdit = { afterIndex: number };
 
@@ -180,6 +181,55 @@ export class NightDetailView extends LitElement {
     return formatDuration(ms / 60000);
   }
 
+  private _showEntity(entityId: string) {
+    this.dispatchEvent(
+      new CustomEvent("hass-more-info", {
+        bubbles: true,
+        composed: true,
+        detail: { entityId },
+      })
+    );
+  }
+
+  private _renderEnvironment() {
+    const config = this.userState?.config;
+    if (!config?.show_environment || !config.environment_entities?.length) {
+      return nothing;
+    }
+
+    return html`
+      <div class="section">
+        <h3>Environment</h3>
+        <div class="env-list">
+          ${config.environment_entities.map((entityId) => {
+            const stateObj = this.hass.states?.[entityId];
+            if (!stateObj) {
+              return html`
+                <div class="env-tile unavailable">
+                  <ha-icon icon="mdi:help-circle-outline"></ha-icon>
+                  <span class="env-name">${entityId}</span>
+                  <span class="env-state">Unavailable</span>
+                </div>
+              `;
+            }
+            const name = stateObj.attributes.friendly_name || entityId;
+            const unit = stateObj.attributes.unit_of_measurement || "";
+            return html`
+              <div
+                class="env-tile"
+                @click=${() => this._showEntity(entityId)}
+              >
+                <state-badge .stateObj=${stateObj}></state-badge>
+                <span class="env-name">${name}</span>
+                <span class="env-state">${stateObj.state}${unit ? ` ${unit}` : ""}</span>
+              </div>
+            `;
+          })}
+        </div>
+      </div>
+    `;
+  }
+
   private _navigate(path: string) {
     this.dispatchEvent(
       new CustomEvent("navigate", {
@@ -270,10 +320,27 @@ export class NightDetailView extends LitElement {
           ? html`
               <div class="section">
                 <h3>Statistics</h3>
-                <sleep-tracker-night-stats .stats=${s.stats}></sleep-tracker-night-stats>
+                <sleep-tracker-night-stats
+                  .stats=${s.stats}
+                  .goalMinutes=${this.userState.config?.sleep_goal_minutes ?? 0}
+                ></sleep-tracker-night-stats>
               </div>
             `
           : nothing}
+
+        ${this.userState.config
+          ? html`
+              <sleep-tracker-session-meta
+                .hass=${this.hass}
+                .api=${this.api}
+                .session=${s}
+                .config=${this.userState.config}
+                @session-updated=${(e: CustomEvent) => { this._session = e.detail.session; }}
+              ></sleep-tracker-session-meta>
+            `
+          : nothing}
+
+        ${this._renderEnvironment()}
 
         <div class="section">
           <div class="section-header">
@@ -790,6 +857,39 @@ export class NightDetailView extends LitElement {
       .empty-text {
         color: var(--secondary-text-color);
         font-size: var(--ha-font-size-s, 12px);
+      }
+
+      /* Environment tiles */
+      .env-list {
+        display: flex;
+        flex-direction: column;
+        gap: var(--ha-space-2, 8px);
+      }
+      .env-tile {
+        display: flex;
+        align-items: center;
+        gap: var(--ha-space-3, 12px);
+        padding: var(--ha-space-3, 12px) var(--ha-space-4, 16px);
+        background: var(--card-background-color, white);
+        border-radius: var(--ha-border-radius-md, 8px);
+        cursor: pointer;
+        border: 1px solid var(--divider-color, #e0e0e0);
+        transition: background 0.15s;
+      }
+      .env-tile:hover {
+        background: var(--secondary-background-color, #f5f5f5);
+      }
+      .env-tile.unavailable {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .env-name {
+        flex: 1;
+        font-size: var(--ha-font-size-m, 14px);
+      }
+      .env-state {
+        font-size: var(--ha-font-size-s, 12px);
+        color: var(--secondary-text-color);
       }
 
       .finalize-section {

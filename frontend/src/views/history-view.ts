@@ -75,7 +75,10 @@ export class HistoryView extends LitElement {
       <div class="container">
         <div class="sessions-list">
           ${this._sessions.map(
-            (s) => html`<sleep-tracker-session-card .session=${s}></sleep-tracker-session-card>`
+            (s) => html`<sleep-tracker-session-card
+              .session=${s}
+              .goalMinutes=${this.userState.config?.sleep_goal_minutes ?? 0}
+            ></sleep-tracker-session-card>`
           )}
         </div>
         ${this._hasMore

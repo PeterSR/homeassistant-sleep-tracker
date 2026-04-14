@@ -18,9 +18,21 @@ export class SettingsView extends LitElement {
   @state() private _retentionDays = 90;
   @state() private _skipEventReview = false;
   @state() private _skipPhaseReview = false;
+  @state() private _sleepGoalMinutes = 0;
   @state() private _saving = false;
   @state() private _dirty = false;
   @state() private _checklist: ChecklistItem[] = [];
+  @state() private _showNote = true;
+  @state() private _showRatingQuality = true;
+  @state() private _showRatingFeeling = true;
+  @state() private _showTags = true;
+  @state() private _availableTags: string[] = [];
+  @state() private _showEnvironment = true;
+  @state() private _environmentEntities: string[] = [];
+  @state() private _tagUsage: Record<string, number> = {};
+  @state() private _tagUsageLoaded = false;
+  @state() private _newTagInput = "";
+  @state() private _newEnvEntity = "";
   @state() private _wizardOpen = false;
   @state() private _wizardStep: "type" | "entity" | "text" = "type";
   @state() private _wizardEntityId = "";
@@ -50,6 +62,14 @@ export class SettingsView extends LitElement {
       this._exportUrl = config.export_url || "";
       this._retentionDays = config.retention_days;
       this._checklist = [...(config.checklist || [])];
+      this._showNote = config.show_note;
+      this._showRatingQuality = config.show_rating_quality;
+      this._showRatingFeeling = config.show_rating_feeling;
+      this._showTags = config.show_tags;
+      this._availableTags = [...(config.available_tags || [])];
+      this._showEnvironment = config.show_environment;
+      this._environmentEntities = [...(config.environment_entities || [])];
+      this._sleepGoalMinutes = config.sleep_goal_minutes;
     }
   }
 
@@ -75,6 +95,7 @@ export class SettingsView extends LitElement {
         export_url: this._exportUrl || null,
         retention_days: this._retentionDays,
         checklist: this._checklist,
+        sleep_goal_minutes: this._sleepGoalMinutes,
       });
       this._dirty = false;
     } catch (err) {
@@ -148,6 +169,51 @@ export class SettingsView extends LitElement {
   private async _removeChecklistItem(index: number) {
     this._checklist = this._checklist.filter((_, i) => i !== index);
     await this._saveChecklist();
+  }
+
+  private async _toggleSetting(key: string, value: boolean) {
+    await this.api.updateSettings({ [key]: value } as any);
+  }
+
+  private async _loadTagUsage() {
+    if (this._tagUsageLoaded) return;
+    try {
+      this._tagUsage = await this.api.getTagUsage();
+      this._tagUsageLoaded = true;
+    } catch (err) {
+      console.error("Failed to load tag usage:", err);
+    }
+  }
+
+  private async _addTag() {
+    const tag = this._newTagInput.trim().toLowerCase();
+    if (!tag || this._availableTags.includes(tag)) return;
+    this._availableTags = [...this._availableTags, tag];
+    this._newTagInput = "";
+    await this.api.updateSettings({ available_tags: this._availableTags });
+  }
+
+  private async _removeTag(tag: string) {
+    this._availableTags = this._availableTags.filter((t) => t !== tag);
+    await this.api.updateSettings({ available_tags: this._availableTags });
+  }
+
+  private async _addEnvironmentEntity() {
+    if (!this._newEnvEntity || this._environmentEntities.includes(this._newEnvEntity)) return;
+    this._environmentEntities = [...this._environmentEntities, this._newEnvEntity];
+    this._newEnvEntity = "";
+    await this.api.updateSettings({ environment_entities: this._environmentEntities });
+  }
+
+  private async _removeEnvironmentEntity(entityId: string) {
+    this._environmentEntities = this._environmentEntities.filter((e) => e !== entityId);
+    await this.api.updateSettings({ environment_entities: this._environmentEntities });
+  }
+
+  private _onSleepGoalChange(e: Event) {
+    const hours = parseFloat((e.target as HTMLInputElement).value) || 0;
+    this._sleepGoalMinutes = Math.round(hours * 60);
+    this._dirty = true;
   }
 
   @state() private _copied: string | null = null;
@@ -407,6 +473,20 @@ data:
             </div>
 
             <div class="field">
+              <label>Sleep goal (hours)</label>
+              <input
+                type="number"
+                min="0"
+                max="24"
+                step="0.5"
+                .value=${String(this._sleepGoalMinutes / 60 || "")}
+                placeholder="0 = no goal"
+                @input=${this._onSleepGoalChange}
+              />
+              <span class="range-value">${this._sleepGoalMinutes > 0 ? `${(this._sleepGoalMinutes / 60).toFixed(1)}h — shown on session stats` : "No goal set"}</span>
+            </div>
+
+            <div class="field">
               <label>Data retention (days)</label>
               <input
                 type="number"
@@ -486,6 +566,192 @@ data:
           </button>
 
           ${this._wizardOpen ? this._renderWizard() : nothing}
+        </ha-card>
+
+        <ha-card class="info-card">
+          <div class="card-header">Session Review</div>
+          <p class="hint">Choose what metadata fields to show when reviewing a session.</p>
+
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <span class="toggle-label">Note</span>
+              <span class="range-value">Free-text note about the session</span>
+            </div>
+            <ha-switch
+              .checked=${this._showNote}
+              @change=${(e: Event) => {
+                this._showNote = (e.target as any).checked;
+                this._toggleSetting("show_note", this._showNote);
+              }}
+            ></ha-switch>
+          </div>
+
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <span class="toggle-label">Sleep quality rating</span>
+              <span class="range-value">Rate how well you slept (1-5)</span>
+            </div>
+            <ha-switch
+              .checked=${this._showRatingQuality}
+              @change=${(e: Event) => {
+                this._showRatingQuality = (e.target as any).checked;
+                this._toggleSetting("show_rating_quality", this._showRatingQuality);
+              }}
+            ></ha-switch>
+          </div>
+
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <span class="toggle-label">Feeling rating</span>
+              <span class="range-value">Rate how refreshed you feel (1-5)</span>
+            </div>
+            <ha-switch
+              .checked=${this._showRatingFeeling}
+              @change=${(e: Event) => {
+                this._showRatingFeeling = (e.target as any).checked;
+                this._toggleSetting("show_rating_feeling", this._showRatingFeeling);
+              }}
+            ></ha-switch>
+          </div>
+
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <span class="toggle-label">Tags</span>
+              <span class="range-value">Categorize sessions (caffeine, exercise, etc.)</span>
+            </div>
+            <ha-switch
+              .checked=${this._showTags}
+              @change=${(e: Event) => {
+                this._showTags = (e.target as any).checked;
+                this._toggleSetting("show_tags", this._showTags);
+              }}
+            ></ha-switch>
+          </div>
+        </ha-card>
+
+        ${this._showTags
+          ? html`
+              <ha-card class="info-card">
+                <div class="card-header">Manage Tags</div>
+                <p class="hint">Tags available as quick-select when reviewing sessions.</p>
+
+                ${this._availableTags.length > 0
+                  ? html`
+                      <div class="checklist-list">
+                        ${this._availableTags.map(
+                          (tag) => html`
+                            <div class="checklist-row">
+                              <div class="checklist-row-info">
+                                <ha-icon icon="mdi:tag-outline"></ha-icon>
+                                <div class="checklist-row-detail">
+                                  <span class="checklist-row-primary">${tag}</span>
+                                  ${this._tagUsageLoaded
+                                    ? html`<span class="checklist-row-secondary">
+                                        Used in ${this._tagUsage[tag] || 0} session${(this._tagUsage[tag] || 0) !== 1 ? "s" : ""}
+                                      </span>`
+                                    : nothing}
+                                </div>
+                              </div>
+                              <button
+                                class="remove-btn"
+                                @click=${() => this._removeTag(tag)}
+                              >
+                                <ha-icon icon="mdi:close"></ha-icon>
+                              </button>
+                            </div>
+                          `
+                        )}
+                      </div>
+                    `
+                  : html`<p class="hint">No tags yet. Add one below or type a new tag during session review.</p>`}
+
+                <div class="tag-add-row">
+                  <input
+                    type="text"
+                    class="tag-add-input"
+                    placeholder="New tag name..."
+                    .value=${this._newTagInput}
+                    @input=${(e: Event) => {
+                      this._newTagInput = (e.target as HTMLInputElement).value;
+                    }}
+                    @keydown=${(e: KeyboardEvent) => {
+                      if (e.key === "Enter") this._addTag();
+                    }}
+                    @focus=${this._loadTagUsage}
+                  />
+                  <button
+                    class="save-btn tag-add-btn"
+                    ?disabled=${!this._newTagInput.trim()}
+                    @click=${this._addTag}
+                  >Add</button>
+                </div>
+              </ha-card>
+            `
+          : nothing}
+
+        <ha-card class="info-card">
+          <div class="card-header">Environment Sensors</div>
+          <p class="hint">Entities shown on the night detail view. Click to view their HA history.</p>
+
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <span class="toggle-label">Show environment</span>
+              <span class="range-value">Display configured sensors on night detail</span>
+            </div>
+            <ha-switch
+              .checked=${this._showEnvironment}
+              @change=${(e: Event) => {
+                this._showEnvironment = (e.target as any).checked;
+                this._toggleSetting("show_environment", this._showEnvironment);
+              }}
+            ></ha-switch>
+          </div>
+
+          ${this._showEnvironment
+            ? html`
+                ${this._environmentEntities.length > 0
+                  ? html`
+                      <div class="checklist-list">
+                        ${this._environmentEntities.map(
+                          (entityId) => html`
+                            <div class="checklist-row">
+                              <div class="checklist-row-info">
+                                <ha-icon icon="mdi:thermometer"></ha-icon>
+                                <div class="checklist-row-detail">
+                                  <span class="checklist-row-primary">${entityId}</span>
+                                </div>
+                              </div>
+                              <button
+                                class="remove-btn"
+                                @click=${() => this._removeEnvironmentEntity(entityId)}
+                              >
+                                <ha-icon icon="mdi:close"></ha-icon>
+                              </button>
+                            </div>
+                          `
+                        )}
+                      </div>
+                    `
+                  : nothing}
+
+                <div class="env-add-section">
+                  <ha-form
+                    .hass=${this.hass}
+                    .schema=${[{ name: "entity_id", selector: { entity: {} } }]}
+                    .data=${{ entity_id: this._newEnvEntity }}
+                    .computeLabel=${() => "Entity"}
+                    @value-changed=${(e: CustomEvent) => {
+                      this._newEnvEntity = e.detail.value.entity_id || "";
+                    }}
+                  ></ha-form>
+                  <button
+                    class="save-btn"
+                    ?disabled=${!this._newEnvEntity}
+                    @click=${this._addEnvironmentEntity}
+                  >Add</button>
+                </div>
+              `
+            : nothing}
         </ha-card>
 
         <ha-card class="info-card">
@@ -931,6 +1197,32 @@ data:
         display: flex;
         flex-direction: column;
         gap: var(--ha-space-4, 16px);
+      }
+      .tag-add-row {
+        display: flex;
+        gap: var(--ha-space-2, 8px);
+        align-items: center;
+        margin-top: var(--ha-space-2, 8px);
+      }
+      .tag-add-input {
+        flex: 1;
+        padding: var(--ha-space-2, 8px) var(--ha-space-3, 12px);
+        border: 1px solid var(--divider-color, #e0e0e0);
+        border-radius: var(--ha-border-radius-md, 8px);
+        font-size: var(--ha-font-size-m, 14px);
+        font-family: inherit;
+        background: var(--card-background-color, white);
+        color: var(--primary-text-color);
+      }
+      .tag-add-btn {
+        flex-shrink: 0;
+        padding: var(--ha-space-2, 8px) var(--ha-space-4, 16px);
+      }
+      .env-add-section {
+        display: flex;
+        flex-direction: column;
+        gap: var(--ha-space-2, 8px);
+        margin-top: var(--ha-space-2, 8px);
       }
     `,
   ];

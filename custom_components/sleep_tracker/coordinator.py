@@ -461,6 +461,54 @@ class SleepTrackerCoordinator:
         self._notify_listeners(user_id)
         _LOGGER.info("Session %s deleted for user %s", session_id, user_id)
 
+    # --- Session metadata (note, ratings, tags) ---
+
+    async def async_update_session_meta(
+        self, user_id: str, session_id: str, **kwargs: Any
+    ) -> dict:
+        """Update session metadata (note, ratings, tags).
+
+        Works on any session status — metadata is reflective, not timeline data.
+        """
+        session = self.store.get_session(session_id)
+        if session is None or session.user_id != user_id:
+            raise ValueError("Session not found")
+
+        allowed = {"note", "rating_quality", "rating_feeling", "tags"}
+        updates = {}
+        for key, value in kwargs.items():
+            if key not in allowed:
+                continue
+            if key in ("rating_quality", "rating_feeling"):
+                if value is not None and (not isinstance(value, int) or value < 1 or value > 5):
+                    raise ValueError(f"{key} must be 1-5 or null")
+            updates[key] = value
+
+        if updates:
+            self.store.update_session(session_id, **updates)
+
+        # Auto-add new tags to the user's available_tags palette
+        if "tags" in updates:
+            config = self.store.get_user_config(user_id)
+            if config:
+                new_tags = set(updates["tags"]) - set(config.available_tags)
+                if new_tags:
+                    config.available_tags = config.available_tags + sorted(new_tags)
+                    self.store.set_user_config(config)
+
+        self._notify_listeners(user_id)
+        return self._session_to_dict(session)
+
+    def get_tag_usage(self, user_id: str) -> dict[str, int]:
+        """Count how many sessions use each tag for a user."""
+        usage: dict[str, int] = {}
+        for s in self.store.sessions.values():
+            if s.user_id != user_id:
+                continue
+            for tag in s.tags:
+                usage[tag] = usage.get(tag, 0) + 1
+        return usage
+
     # --- Phase editing (only for stopped, non-finalized sessions) ---
 
     def _push_edit_history(self, session: SleepSession) -> None:

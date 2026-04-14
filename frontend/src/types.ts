@@ -78,6 +78,10 @@ export interface SleepSession {
   exported: boolean;
   stats: SessionStats | null;
   undo_count?: number;
+  note: string | null;
+  rating_quality: number | null;
+  rating_feeling: number | null;
+  tags: string[];
 }
 
 export interface ChecklistItem {
@@ -100,6 +104,14 @@ export interface UserConfig {
   export_headers: Record<string, string>;
   retention_days: number;
   checklist: ChecklistItem[];
+  show_note: boolean;
+  show_rating_quality: boolean;
+  show_rating_feeling: boolean;
+  show_tags: boolean;
+  available_tags: string[];
+  show_environment: boolean;
+  environment_entities: string[];
+  sleep_goal_minutes: number;
 }
 
 export interface UserState {

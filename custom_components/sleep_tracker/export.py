@@ -57,6 +57,10 @@ async def async_export_session(
         "events": [e.to_dict() for e in session.events],
         "phases": [p.to_dict() for p in phases],
         "stats": stats,
+        "note": session.note,
+        "rating_quality": session.rating_quality,
+        "rating_feeling": session.rating_feeling,
+        "tags": session.tags,
     }
 
     client = async_get_clientsession(hass)

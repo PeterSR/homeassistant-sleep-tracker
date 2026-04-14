@@ -36,6 +36,8 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_adjust_phase_boundary)
     websocket_api.async_register_command(hass, ws_undo_edit)
     websocket_api.async_register_command(hass, ws_delete_session)
+    websocket_api.async_register_command(hass, ws_update_session_meta)
+    websocket_api.async_register_command(hass, ws_get_tag_usage)
     websocket_api.async_register_command(hass, ws_finalize_session)
     websocket_api.async_register_command(hass, ws_export_session)
     websocket_api.async_register_command(hass, ws_subscribe)
@@ -358,6 +360,16 @@ async def ws_setup_user(
             int, vol.Range(min=7, max=365)
         ),
         vol.Optional("checklist"): list,
+        vol.Optional("show_note"): bool,
+        vol.Optional("show_rating_quality"): bool,
+        vol.Optional("show_rating_feeling"): bool,
+        vol.Optional("show_tags"): bool,
+        vol.Optional("available_tags"): [str],
+        vol.Optional("show_environment"): bool,
+        vol.Optional("environment_entities"): [str],
+        vol.Optional("sleep_goal_minutes"): vol.All(
+            int, vol.Range(min=0, max=1440)
+        ),
     }
 )
 @websocket_api.async_response
@@ -515,6 +527,61 @@ async def ws_delete_session(
         connection.send_result(msg["id"], {"success": True})
     except ValueError as err:
         connection.send_error(msg["id"], "delete_failed", str(err))
+
+
+# --- Update Session Meta ---
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "sleep_tracker/update_session_meta",
+        vol.Required("session_id"): str,
+        vol.Optional("note"): vol.Any(str, None),
+        vol.Optional("rating_quality"): vol.Any(
+            vol.All(int, vol.Range(min=1, max=5)), None
+        ),
+        vol.Optional("rating_feeling"): vol.Any(
+            vol.All(int, vol.Range(min=1, max=5)), None
+        ),
+        vol.Optional("tags"): [str],
+    }
+)
+@websocket_api.async_response
+async def ws_update_session_meta(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Update session metadata (note, ratings, tags)."""
+    coordinator = _get_data(hass)["coordinator"]
+    user_id = connection.user.id
+
+    meta = {
+        k: v
+        for k, v in msg.items()
+        if k not in ("id", "type", "session_id")
+    }
+
+    try:
+        session = await coordinator.async_update_session_meta(
+            user_id, msg["session_id"], **meta
+        )
+        connection.send_result(msg["id"], session)
+    except ValueError as err:
+        connection.send_error(msg["id"], "update_meta_failed", str(err))
+
+
+# --- Get Tag Usage ---
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): "sleep_tracker/get_tag_usage"}
+)
+@websocket_api.async_response
+async def ws_get_tag_usage(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Get tag usage counts for the current user."""
+    coordinator = _get_data(hass)["coordinator"]
+    user_id = connection.user.id
+    usage = coordinator.get_tag_usage(user_id)
+    connection.send_result(msg["id"], usage)
 
 
 # --- Finalize Session ---

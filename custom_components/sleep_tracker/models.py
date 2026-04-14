@@ -22,6 +22,14 @@ class UserConfig:
     export_headers: dict[str, str] = field(default_factory=dict)
     retention_days: int = 90
     checklist: list[dict[str, Any]] = field(default_factory=list)
+    show_note: bool = True
+    show_rating_quality: bool = True
+    show_rating_feeling: bool = True
+    show_tags: bool = True
+    available_tags: list[str] = field(default_factory=list)
+    show_environment: bool = True
+    environment_entities: list[str] = field(default_factory=list)
+    sleep_goal_minutes: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -37,6 +45,14 @@ class UserConfig:
             "export_headers": self.export_headers,
             "retention_days": self.retention_days,
             "checklist": self.checklist,
+            "show_note": self.show_note,
+            "show_rating_quality": self.show_rating_quality,
+            "show_rating_feeling": self.show_rating_feeling,
+            "show_tags": self.show_tags,
+            "available_tags": self.available_tags,
+            "show_environment": self.show_environment,
+            "environment_entities": self.environment_entities,
+            "sleep_goal_minutes": self.sleep_goal_minutes,
         }
 
     @classmethod
@@ -54,6 +70,14 @@ class UserConfig:
             export_headers=data.get("export_headers", {}),
             retention_days=data.get("retention_days", 90),
             checklist=data.get("checklist", []),
+            show_note=data.get("show_note", True),
+            show_rating_quality=data.get("show_rating_quality", True),
+            show_rating_feeling=data.get("show_rating_feeling", True),
+            show_tags=data.get("show_tags", True),
+            available_tags=data.get("available_tags", []),
+            show_environment=data.get("show_environment", True),
+            environment_entities=data.get("environment_entities", []),
+            sleep_goal_minutes=data.get("sleep_goal_minutes", 0),
         )
 
 
@@ -123,6 +147,10 @@ class SleepSession:
     phases: list[SleepPhase] | None = None  # materialized on complete
     finalized: bool = False
     exported: bool = False
+    note: str | None = None
+    rating_quality: int | None = None  # 1-5
+    rating_feeling: int | None = None  # 1-5
+    tags: list[str] = field(default_factory=list)
 
     @property
     def is_active(self) -> bool:
@@ -152,6 +180,10 @@ class SleepSession:
             ),
             "finalized": self.finalized,
             "exported": self.exported,
+            "note": self.note,
+            "rating_quality": self.rating_quality,
+            "rating_feeling": self.rating_feeling,
+            "tags": self.tags,
         }
 
     @classmethod
@@ -171,4 +203,8 @@ class SleepSession:
             ),
             finalized=data.get("finalized", False),
             exported=data.get("exported", False),
+            note=data.get("note"),
+            rating_quality=data.get("rating_quality"),
+            rating_feeling=data.get("rating_feeling"),
+            tags=data.get("tags", []),
         )

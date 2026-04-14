@@ -7,16 +7,24 @@ import { formatDuration, efficiencyPercent } from "../utils";
 @customElement("sleep-tracker-night-stats")
 export class NightStats extends LitElement {
   @property({ attribute: false }) stats: SessionStats | null = null;
+  @property({ type: Number }) goalMinutes = 0;
 
   render() {
     if (!this.stats) return nothing;
     const s = this.stats;
+    const goalMet = this.goalMinutes > 0 && s.total_sleep_minutes >= this.goalMinutes;
+    const goalSet = this.goalMinutes > 0;
 
     return html`
       <div class="stats-grid">
         <div class="stat">
           <div class="stat-value">${formatDuration(s.total_sleep_minutes)}</div>
           <div class="stat-label">Total Sleep</div>
+          ${goalSet
+            ? html`<div class="stat-goal ${goalMet ? "met" : "unmet"}">
+                Goal: ${formatDuration(this.goalMinutes)}
+              </div>`
+            : nothing}
         </div>
         <div class="stat">
           <div class="stat-value">${efficiencyPercent(s.sleep_efficiency)}</div>
@@ -59,6 +67,16 @@ export class NightStats extends LitElement {
         .stats-grid {
           grid-template-columns: repeat(2, 1fr);
         }
+      }
+      .stat-goal {
+        font-size: 10px;
+        margin-top: 2px;
+      }
+      .stat-goal.met {
+        color: var(--sleep-color-success, #66bb6a);
+      }
+      .stat-goal.unmet {
+        color: var(--secondary-text-color);
       }
     `,
   ];

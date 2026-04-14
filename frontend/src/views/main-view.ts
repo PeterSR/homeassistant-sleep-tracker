@@ -300,7 +300,10 @@ export class MainView extends LitElement {
           ? html`
               <div class="section">
                 <h3>Last Night</h3>
-                <sleep-tracker-session-card .session=${last}></sleep-tracker-session-card>
+                <sleep-tracker-session-card
+                  .session=${last}
+                  .goalMinutes=${this.userState.config?.sleep_goal_minutes ?? 0}
+                ></sleep-tracker-session-card>
               </div>
             `
           : html`
