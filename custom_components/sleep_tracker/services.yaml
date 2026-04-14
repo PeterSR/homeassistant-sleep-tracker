@@ -34,6 +34,24 @@ stop_sleep:
       selector:
         text:
 
+pause_sleep:
+  name: Pause sleep session
+  description: Pause the active sleep session. The user is marked as awake until the session is resumed via start_sleep.
+  fields:
+    user_id:
+      name: User ID
+      description: The Home Assistant user ID to pause sleep for.
+      required: true
+      selector:
+        text:
+    source:
+      name: Source
+      description: What triggered this.
+      required: false
+      default: automation
+      selector:
+        text:
+
 reopen_session:
   name: Reopen sleep session
   description: Reopen a stopped (but not finalized) session, allowing new events to be appended again. Clears the materialized phases.

@@ -16,6 +16,8 @@ class UserConfig:
     sleep_onset_minutes: int = 0
     fall_asleep_latency_minutes: int = 15
     auto_finalize_hours: int = 12
+    skip_event_review: bool = False
+    skip_phase_review: bool = False
     export_url: str | None = None
     export_headers: dict[str, str] = field(default_factory=dict)
     retention_days: int = 90
@@ -29,6 +31,8 @@ class UserConfig:
             "sleep_onset_minutes": self.sleep_onset_minutes,
             "fall_asleep_latency_minutes": self.fall_asleep_latency_minutes,
             "auto_finalize_hours": self.auto_finalize_hours,
+            "skip_event_review": self.skip_event_review,
+            "skip_phase_review": self.skip_phase_review,
             "export_url": self.export_url,
             "export_headers": self.export_headers,
             "retention_days": self.retention_days,
@@ -44,6 +48,8 @@ class UserConfig:
             sleep_onset_minutes=data.get("sleep_onset_minutes", 0),
             fall_asleep_latency_minutes=data.get("fall_asleep_latency_minutes", 15),
             auto_finalize_hours=data.get("auto_finalize_hours", 12),
+            skip_event_review=data.get("skip_event_review", False),
+            skip_phase_review=data.get("skip_phase_review", False),
             export_url=data.get("export_url"),
             export_headers=data.get("export_headers", {}),
             retention_days=data.get("retention_days", 90),
@@ -112,8 +118,9 @@ class SleepSession:
     user_id: str
     started_at: str  # ISO 8601
     ended_at: str | None = None  # ISO 8601, None if active
+    paused_at: str | None = None  # ISO 8601, set when session is paused
     events: list[SleepEvent] = field(default_factory=list)
-    phases: list[SleepPhase] | None = None  # materialized on stop
+    phases: list[SleepPhase] | None = None  # materialized on complete
     finalized: bool = False
     exported: bool = False
 
@@ -121,12 +128,24 @@ class SleepSession:
     def is_active(self) -> bool:
         return self.ended_at is None
 
+    @property
+    def status(self) -> str:
+        """Lifecycle status: active, paused, stopped, completed, finalized."""
+        if self.finalized:
+            return "finalized"
+        if self.ended_at is not None:
+            return "completed" if self.phases is not None else "stopped"
+        if self.paused_at is not None:
+            return "paused"
+        return "active"
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "session_id": self.session_id,
             "user_id": self.user_id,
             "started_at": self.started_at,
             "ended_at": self.ended_at,
+            "paused_at": self.paused_at,
             "events": [e.to_dict() for e in self.events],
             "phases": (
                 [p.to_dict() for p in self.phases] if self.phases is not None else None
@@ -143,6 +162,7 @@ class SleepSession:
             user_id=data["user_id"],
             started_at=data["started_at"],
             ended_at=data.get("ended_at"),
+            paused_at=data.get("paused_at"),
             events=[SleepEvent.from_dict(e) for e in data.get("events", [])],
             phases=(
                 [SleepPhase.from_dict(p) for p in phases_data]

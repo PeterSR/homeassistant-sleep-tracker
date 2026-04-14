@@ -16,6 +16,8 @@ export class SettingsView extends LitElement {
   @state() private _autoFinalize = 12;
   @state() private _exportUrl = "";
   @state() private _retentionDays = 90;
+  @state() private _skipEventReview = false;
+  @state() private _skipPhaseReview = false;
   @state() private _saving = false;
   @state() private _dirty = false;
   @state() private _checklist: ChecklistItem[] = [];
@@ -43,6 +45,8 @@ export class SettingsView extends LitElement {
       this._onset = config.sleep_onset_minutes;
       this._latency = config.fall_asleep_latency_minutes;
       this._autoFinalize = config.auto_finalize_hours;
+      this._skipEventReview = config.skip_event_review;
+      this._skipPhaseReview = config.skip_phase_review;
       this._exportUrl = config.export_url || "";
       this._retentionDays = config.retention_days;
       this._checklist = [...(config.checklist || [])];
@@ -66,6 +70,8 @@ export class SettingsView extends LitElement {
         sleep_onset_minutes: this._onset,
         fall_asleep_latency_minutes: this._latency,
         auto_finalize_hours: this._autoFinalize,
+        skip_event_review: this._skipEventReview,
+        skip_phase_review: this._skipPhaseReview,
         export_url: this._exportUrl || null,
         retention_days: this._retentionDays,
         checklist: this._checklist,
@@ -372,6 +378,34 @@ data:
               <span class="range-value">${this._autoFinalize}h — unfinalized sessions are auto-finalized when you start the next sleep</span>
             </div>
 
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <span class="toggle-label">Skip event review</span>
+                <span class="range-value">After stopping, skip straight to phase editing</span>
+              </div>
+              <ha-switch
+                .checked=${this._skipEventReview}
+                @change=${(e: Event) => {
+                  this._skipEventReview = (e.target as any).checked;
+                  this._dirty = true;
+                }}
+              ></ha-switch>
+            </div>
+
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <span class="toggle-label">Skip phase review</span>
+                <span class="range-value">After completing events, auto-finalize the session</span>
+              </div>
+              <ha-switch
+                .checked=${this._skipPhaseReview}
+                @change=${(e: Event) => {
+                  this._skipPhaseReview = (e.target as any).checked;
+                  this._dirty = true;
+                }}
+              ></ha-switch>
+            </div>
+
             <div class="field">
               <label>Data retention (days)</label>
               <input
@@ -532,6 +566,10 @@ data:
               <span class="hint">End the active sleep session</span>
             </div>
             <div class="service-item">
+              <code>sleep_tracker.pause_sleep</code>
+              <span class="hint">Pause — marks as awake until resumed via start_sleep</span>
+            </div>
+            <div class="service-item">
               <code>sleep_tracker.reopen_session</code>
               <span class="hint">Reopen a stopped (not finalized) session</span>
             </div>
@@ -606,6 +644,23 @@ data:
         font-size: var(--ha-font-size-s, 12px);
         color: var(--secondary-text-color);
         text-align: center;
+      }
+      .toggle-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--ha-space-4, 16px);
+        padding: var(--ha-space-2, 8px) 0;
+      }
+      .toggle-info {
+        display: flex;
+        flex-direction: column;
+        gap: var(--ha-space-1, 4px);
+        flex: 1;
+      }
+      .toggle-label {
+        font-size: var(--ha-font-size-m, 14px);
+        font-weight: var(--ha-font-weight-medium, 500);
       }
       .save-btn {
         padding: var(--ha-space-3, 12px);

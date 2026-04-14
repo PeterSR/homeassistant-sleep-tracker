@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from .const import EVENT_AWAKE, EVENT_FELL_ASLEEP, EVENT_STILL_AWAKE, PHASE_ASLEEP, PHASE_AWAKE
+from .const import EVENT_AWAKE, EVENT_FELL_ASLEEP, EVENT_PAUSE, EVENT_RESUME, EVENT_STILL_AWAKE, PHASE_ASLEEP, PHASE_AWAKE
 from .models import SleepEvent, SleepPhase
 
 
@@ -71,6 +71,9 @@ def materialize_phases(
     segment_start = start_dt
     sleep_at = start_dt + max(latency, onset)
 
+    # Sentinel: "never fall asleep automatically" (used during pause)
+    never = end_dt + timedelta(days=365)
+
     for event in sorted_events:
         event_time = _parse(event.timestamp)
         if event_time >= end_dt:
@@ -86,6 +89,38 @@ def materialize_phases(
                 segment_start = event_time
                 state = PHASE_ASLEEP
             # else: already asleep, no-op
+            continue
+
+        if event.event_type == EVENT_PAUSE:
+            # Explicit awake — user is up, stays awake until resume
+            if state == PHASE_AWAKE:
+                if sleep_at <= event_time:
+                    # Algorithm thought asleep; pause wakes us
+                    if sleep_at > segment_start:
+                        raw_phases.append(
+                            SleepPhase(_fmt(segment_start), _fmt(sleep_at), PHASE_AWAKE)
+                        )
+                    if event_time > sleep_at:
+                        raw_phases.append(
+                            SleepPhase(_fmt(sleep_at), _fmt(event_time), PHASE_ASLEEP)
+                        )
+                    segment_start = event_time
+                    state = PHASE_AWAKE
+            elif state == PHASE_ASLEEP:
+                if event_time > segment_start:
+                    raw_phases.append(
+                        SleepPhase(_fmt(segment_start), _fmt(event_time), PHASE_ASLEEP)
+                    )
+                segment_start = event_time
+                state = PHASE_AWAKE
+            # Disable automatic sleep — stays awake until resume
+            sleep_at = never
+            continue
+
+        if event.event_type == EVENT_RESUME:
+            # User is back in bed — onset timer starts fresh (same as session start)
+            sleep_at = event_time + max(latency, onset)
+            # State stays awake (user was paused = awake), onset period runs
             continue
 
         if event.event_type == EVENT_STILL_AWAKE:

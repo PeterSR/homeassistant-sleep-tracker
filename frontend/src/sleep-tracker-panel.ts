@@ -7,6 +7,7 @@ import { tokens } from "./styles";
 import "./views/main-view";
 import "./views/history-view";
 import "./views/night-detail-view";
+import "./views/event-review-view";
 import "./views/settings-view";
 import "./views/stats-view";
 
@@ -154,6 +155,22 @@ export class SleepTrackerPanel extends LitElement {
   private _renderContent() {
     if (!this._userState) {
       return html`<div class="loading">Loading...</div>`;
+    }
+
+    const reviewMatch = this._path.match(/^\/review\/(.+)$/);
+    if (reviewMatch) {
+      const sessionId = decodeURIComponent(reviewMatch[1]);
+      return html`
+        <sleep-tracker-event-review-view
+          .hass=${this.hass}
+          .api=${this._api}
+          .userState=${this._userState}
+          .sessionId=${sessionId}
+          .narrow=${this.narrow}
+          @navigate=${this._onNavigate}
+          @set-toolbar=${this._onSetToolbar}
+        ></sleep-tracker-event-review-view>
+      `;
     }
 
     const nightMatch = this._path.match(/^\/night\/(.+)$/);

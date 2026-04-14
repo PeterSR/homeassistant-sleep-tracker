@@ -90,10 +90,26 @@ export class MainView extends LitElement {
 
   private async _stopSleep() {
     try {
-      await this.api.stopSleep();
-      this._requestRefresh();
+      const session = await this.api.stopSleep();
+      if (session.status === "stopped") {
+        this._navigate(`/review/${session.session_id}`);
+      } else if (session.status === "completed") {
+        this._navigate(`/night/${session.session_id}`);
+      } else {
+        // finalized (both skips enabled) — stay on main
+        this._requestRefresh();
+      }
     } catch (err) {
       console.error("Failed to stop sleep:", err);
+    }
+  }
+
+  private async _pauseSleep() {
+    try {
+      await this.api.pauseSleep();
+      this._requestRefresh();
+    } catch (err) {
+      console.error("Failed to pause sleep:", err);
     }
   }
 
@@ -179,13 +195,14 @@ export class MainView extends LitElement {
 
     // Active session
     if (active) {
+      const paused = active.status === "paused";
       return html`
         <div class="container">
           <ha-card>
             <div class="session-header">
-              <ha-icon icon="mdi:sleep" class="sleeping-icon"></ha-icon>
+              <ha-icon icon=${paused ? "mdi:pause-circle-outline" : "mdi:sleep"} class=${paused ? "paused-icon" : "sleeping-icon"}></ha-icon>
               <div>
-                <div class="status">Sleeping</div>
+                <div class="status">${paused ? "Paused" : "Sleeping"}</div>
                 <div class="started">Started ${formatTime(active.started_at)} (${timeAgo(active.started_at)})</div>
               </div>
             </div>
@@ -208,7 +225,25 @@ export class MainView extends LitElement {
                 `
               : nothing}
 
-            <sleep-tracker-pulse-button .api=${this.api}></sleep-tracker-pulse-button>
+            ${paused
+              ? html`
+                  <div class="resume-section">
+                    <button class="big-button start" @click=${this._startSleep}>
+                      <ha-icon icon="mdi:sleep"></ha-icon>
+                      Resume Sleep
+                    </button>
+                  </div>
+                `
+              : html`
+                  <sleep-tracker-pulse-button .api=${this.api}></sleep-tracker-pulse-button>
+
+                  <div class="pause-section">
+                    <button class="big-button pause" @click=${this._pauseSleep}>
+                      <ha-icon icon="mdi:pause"></ha-icon>
+                      Pause
+                    </button>
+                  </div>
+                `}
 
             <div class="stop-section">
               <button class="big-button stop" @click=${this._stopSleep}>
@@ -231,16 +266,24 @@ export class MainView extends LitElement {
               <div class="unfinalized-section">
                 <h3>Needs Review</h3>
                 ${unfinalized.map(
-                  (s) => html`
-                    <div class="unfinalized-card" @click=${() => this._navigate(`/night/${s.session_id}`)}>
-                      <ha-icon icon="mdi:pencil-circle-outline" class="review-icon"></ha-icon>
-                      <div class="unfinalized-info">
-                        <span class="unfinalized-date">${formatTime(s.started_at)} — ${s.ended_at ? formatTime(s.ended_at) : ""}</span>
-                        <span class="unfinalized-hint">Tap to review and finalize</span>
+                  (s) => {
+                    const path = s.status === "stopped"
+                      ? `/review/${s.session_id}`
+                      : `/night/${s.session_id}`;
+                    const hint = s.status === "stopped"
+                      ? "Tap to review events"
+                      : "Tap to review and finalize";
+                    return html`
+                      <div class="unfinalized-card" @click=${() => this._navigate(path)}>
+                        <ha-icon icon="mdi:pencil-circle-outline" class="review-icon"></ha-icon>
+                        <div class="unfinalized-info">
+                          <span class="unfinalized-date">${formatTime(s.started_at)} — ${s.ended_at ? formatTime(s.ended_at) : ""}</span>
+                          <span class="unfinalized-hint">${hint}</span>
+                        </div>
+                        <ha-icon icon="mdi:chevron-right"></ha-icon>
                       </div>
-                      <ha-icon icon="mdi:chevron-right"></ha-icon>
-                    </div>
-                  `
+                    `;
+                  }
                 )}
               </div>
             `
@@ -292,6 +335,10 @@ export class MainView extends LitElement {
         --mdc-icon-size: 40px;
         color: var(--sleep-color-asleep, #42a5f5);
       }
+      .paused-icon {
+        --mdc-icon-size: 40px;
+        color: var(--sleep-color-pulse, #ff9800);
+      }
       .status {
         font-size: var(--ha-font-size-xl, 20px);
         font-weight: var(--ha-font-weight-medium, 500);
@@ -309,8 +356,11 @@ export class MainView extends LitElement {
         text-align: center;
         margin-top: var(--ha-space-2, 8px);
       }
+      .pause-section, .resume-section {
+        margin-top: var(--ha-space-4, 16px);
+      }
       .stop-section {
-        margin-top: var(--ha-space-6, 24px);
+        margin-top: var(--ha-space-4, 16px);
       }
       .empty-hint {
         text-align: center;

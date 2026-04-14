@@ -84,6 +84,10 @@ export const buttonStyles = css`
     background: var(--sleep-color-awake, #ef5350);
     color: white;
   }
+  .big-button.pause {
+    background: var(--sleep-color-pulse, #ff9800);
+    color: white;
+  }
   .pulse-buttons {
     display: flex;
     gap: var(--ha-space-3, 12px);

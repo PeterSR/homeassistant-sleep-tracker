@@ -14,6 +14,7 @@ _LOGGER = logging.getLogger(__name__)
 
 SERVICE_START_SLEEP = "start_sleep"
 SERVICE_STOP_SLEEP = "stop_sleep"
+SERVICE_PAUSE_SLEEP = "pause_sleep"
 SERVICE_REOPEN_SESSION = "reopen_session"
 SERVICE_EVENT_AWAKE = "event_awake"
 SERVICE_EVENT_STILL_AWAKE = "event_still_awake"
@@ -66,6 +67,13 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             source=call.data.get("source", "automation"),
         )
 
+    async def handle_pause_sleep(call: ServiceCall) -> None:
+        coordinator = _get_coordinator(hass)
+        await coordinator.async_pause_sleep(
+            user_id=call.data["user_id"],
+            source=call.data.get("source", "automation"),
+        )
+
     async def handle_reopen_session(call: ServiceCall) -> None:
         coordinator = _get_coordinator(hass)
         await coordinator.async_reopen_session(
@@ -112,6 +120,10 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         schema=SCHEMA_USER_AND_SOURCE,
     )
     hass.services.async_register(
+        DOMAIN, SERVICE_PAUSE_SLEEP, handle_pause_sleep,
+        schema=SCHEMA_USER_AND_SOURCE,
+    )
+    hass.services.async_register(
         DOMAIN, SERVICE_REOPEN_SESSION, handle_reopen_session,
         schema=SCHEMA_REOPEN,
     )
@@ -138,6 +150,7 @@ async def async_unload_services(hass: HomeAssistant) -> None:
     for service in (
         SERVICE_START_SLEEP,
         SERVICE_STOP_SLEEP,
+        SERVICE_PAUSE_SLEEP,
         SERVICE_REOPEN_SESSION,
         SERVICE_EVENT_AWAKE,
         SERVICE_EVENT_STILL_AWAKE,

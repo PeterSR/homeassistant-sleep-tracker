@@ -24,9 +24,11 @@ from homeassistant.util import dt as dt_util
 from .const import (
     EVENT_AWAKE,
     EVENT_FELL_ASLEEP,
+    EVENT_PAUSE,
+    EVENT_RESUME,
     EVENT_STILL_AWAKE,
-    EVENT_TYPES,
     PHASE_AWAKE,
+    USER_EVENT_TYPES,
 )
 from .models import SleepEvent, SleepPhase, SleepSession
 from .phases import (
@@ -145,13 +147,20 @@ class SleepTrackerCoordinator:
     async def async_start_sleep(
         self, user_id: str, source: str = "manual"
     ) -> dict:
-        """Start a new sleep session. Auto-finalizes any pending sessions first."""
+        """Start a new sleep session, or resume a paused one.
+
+        If there is a paused session, resume it (record resume event, clear
+        paused_at). Otherwise, create a new session. Auto-finalizes any
+        pending sessions first.
+        """
         config = self.store.get_user_config(user_id)
         if config is None:
             raise ValueError(f"User {user_id} is not set up for sleep tracking")
 
         active = self.store.get_active_session(user_id)
         if active is not None:
+            if active.paused_at is not None:
+                return await self._async_resume_sleep(user_id, active, source)
             raise ValueError(
                 f"User {user_id} already has an active session: {active.session_id}"
             )
@@ -179,21 +188,44 @@ class SleepTrackerCoordinator:
         _LOGGER.info("Sleep session started for user %s (source: %s)", user_id, source)
         return self._session_to_dict(session)
 
+    async def _async_resume_sleep(
+        self, user_id: str, session: SleepSession, source: str
+    ) -> dict:
+        """Resume a paused session. Records a resume event and clears paused_at."""
+        event = SleepEvent(
+            timestamp=dt_util.now().isoformat(),
+            event_type=EVENT_RESUME,
+            source=source,
+        )
+        session.events.append(event)
+        self.store.update_session(
+            session.session_id, events=session.events, paused_at=None
+        )
+
+        self._notify_listeners(user_id)
+        self.hass.bus.async_fire(
+            "sleep_tracker_session_resumed",
+            {"user_id": user_id, "session_id": session.session_id},
+        )
+
+        _LOGGER.info("Sleep session resumed for user %s (source: %s)", user_id, source)
+        return self._session_to_dict(session)
+
     async def async_stop_sleep(
         self, user_id: str, source: str = "manual"
     ) -> dict:
-        """Stop the active sleep session. Materializes phases and stores them."""
+        """Stop the active sleep session.
+
+        Sets ended_at but does NOT materialize phases — the session enters
+        event-review mode. Call async_complete_session to materialize.
+        """
         session = self.store.get_active_session(user_id)
         if session is None:
             raise ValueError(f"User {user_id} has no active session")
 
         ended_at = dt_util.now().isoformat()
-        params = self._get_user_timeline_params(user_id)
-        materialized = materialize_phases(
-            session.started_at, ended_at, session.events, **params
-        )
         self.store.update_session(
-            session.session_id, ended_at=ended_at, phases=materialized
+            session.session_id, ended_at=ended_at, paused_at=None
         )
 
         self._notify_listeners(user_id)
@@ -203,6 +235,44 @@ class SleepTrackerCoordinator:
         )
 
         _LOGGER.info("Sleep session ended for user %s (source: %s)", user_id, source)
+
+        # Auto-progress if user has skip settings enabled
+        config = self.store.get_user_config(user_id)
+        if config and config.skip_event_review:
+            return await self.async_complete_session(user_id, session.session_id)
+
+        return self._session_to_dict(session)
+
+    async def async_pause_sleep(
+        self, user_id: str, source: str = "manual"
+    ) -> dict:
+        """Pause the active session — marks user as awake until resumed."""
+        session = self.store.get_active_session(user_id)
+        if session is None:
+            raise ValueError(f"User {user_id} has no active session")
+        if session.paused_at is not None:
+            raise ValueError("Session is already paused")
+
+        now = dt_util.now()
+        event = SleepEvent(
+            timestamp=now.isoformat(),
+            event_type=EVENT_PAUSE,
+            source=source,
+        )
+        session.events.append(event)
+        self.store.update_session(
+            session.session_id,
+            events=session.events,
+            paused_at=now.isoformat(),
+        )
+
+        self._notify_listeners(user_id)
+        self.hass.bus.async_fire(
+            "sleep_tracker_session_paused",
+            {"user_id": user_id, "session_id": session.session_id},
+        )
+
+        _LOGGER.info("Sleep session paused for user %s (source: %s)", user_id, source)
         return self._session_to_dict(session)
 
     async def async_reopen_session(self, user_id: str, session_id: str) -> dict:
@@ -246,7 +316,7 @@ class SleepTrackerCoordinator:
 
         Stopped sessions reject events.
         """
-        if event_type not in EVENT_TYPES:
+        if event_type not in USER_EVENT_TYPES:
             raise ValueError(f"Invalid event type: {event_type}")
 
         session = self.store.get_active_session(user_id)
@@ -254,6 +324,8 @@ class SleepTrackerCoordinator:
             raise ValueError(
                 f"User {user_id} has no active session — events are rejected on stopped sessions"
             )
+        if session.paused_at is not None:
+            raise ValueError("Cannot record events while session is paused")
 
         now = dt_util.now()
 
@@ -292,6 +364,87 @@ class SleepTrackerCoordinator:
             "Event %s recorded for user %s (source: %s)",
             event_type, user_id, source,
         )
+        return self._session_to_dict(session)
+
+    # --- Session completion (event review → phase editing) ---
+
+    async def async_complete_session(
+        self, user_id: str, session_id: str
+    ) -> dict:
+        """Complete event review: materialize phases from events.
+
+        Session must be stopped (ended_at set) with no stored phases yet.
+        """
+        session = self.store.get_session(session_id)
+        if session is None or session.user_id != user_id:
+            raise ValueError("Session not found")
+        if session.is_active:
+            raise ValueError("Cannot complete an active session — stop it first")
+        if session.phases is not None:
+            raise ValueError("Session already has materialized phases")
+
+        params = self._get_user_timeline_params(user_id)
+        materialized = materialize_phases(
+            session.started_at, session.ended_at, session.events, **params
+        )
+        self.store.update_session(session_id, phases=materialized)
+
+        self._notify_listeners(user_id)
+        _LOGGER.info("Session %s completed (phases materialized) for user %s", session_id, user_id)
+
+        # Auto-finalize if user has skip setting enabled
+        config = self.store.get_user_config(user_id)
+        if config and config.skip_phase_review:
+            return await self.async_finalize_session(user_id, session_id)
+
+        return self._session_to_dict(session)
+
+    # --- Event editing (only for stopped sessions without materialized phases) ---
+
+    def _get_event_editable_session(
+        self, user_id: str, session_id: str
+    ) -> SleepSession:
+        """Get a session whose events can be edited (stopped, no phases, not finalized)."""
+        session = self.store.get_session(session_id)
+        if session is None or session.user_id != user_id:
+            raise ValueError("Session not found")
+        if session.is_active:
+            raise ValueError("Cannot edit events on an active session")
+        if session.phases is not None:
+            raise ValueError("Events are locked after phase materialization")
+        if session.finalized:
+            raise ValueError("Cannot edit a finalized session")
+        return session
+
+    async def async_edit_event(
+        self, user_id: str, session_id: str, event_index: int, new_event_type: str
+    ) -> dict:
+        """Change the type of an event during event review."""
+        if new_event_type not in USER_EVENT_TYPES:
+            raise ValueError(f"Invalid event type: {new_event_type}")
+        session = self._get_event_editable_session(user_id, session_id)
+        if event_index < 0 or event_index >= len(session.events):
+            raise ValueError(f"Invalid event index: {event_index}")
+        # Don't allow editing pause/resume events
+        if session.events[event_index].event_type in (EVENT_PAUSE, EVENT_RESUME):
+            raise ValueError("Cannot edit pause/resume events")
+
+        session.events[event_index].event_type = new_event_type
+        self.store.update_session(session_id, events=session.events)
+        self._notify_listeners(user_id)
+        return self._session_to_dict(session)
+
+    async def async_delete_event(
+        self, user_id: str, session_id: str, event_index: int
+    ) -> dict:
+        """Delete an event during event review."""
+        session = self._get_event_editable_session(user_id, session_id)
+        if event_index < 0 or event_index >= len(session.events):
+            raise ValueError(f"Invalid event index: {event_index}")
+
+        session.events.pop(event_index)
+        self.store.update_session(session_id, events=session.events)
+        self._notify_listeners(user_id)
         return self._session_to_dict(session)
 
     # --- Session deletion ---
@@ -590,6 +743,7 @@ class SleepTrackerCoordinator:
             )
 
         result = session.to_dict()
+        result["status"] = session.status
         # Always include phases in the response (even if not stored), so the
         # frontend has a single rendering path.
         result["phases"] = [p.to_dict() for p in phases]

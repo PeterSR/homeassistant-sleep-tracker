@@ -36,7 +36,7 @@ export interface ToolbarConfig {
   actions?: unknown;
 }
 
-export type EventType = "awake" | "still_awake" | "fell_asleep";
+export type EventType = "awake" | "still_awake" | "fell_asleep" | "pause" | "resume";
 
 export interface SleepEvent {
   timestamp: string;
@@ -63,13 +63,17 @@ export interface SessionStats {
   awakenings: number;
 }
 
+export type SessionStatus = "active" | "paused" | "stopped" | "completed" | "finalized";
+
 export interface SleepSession {
   session_id: string;
   user_id: string;
   started_at: string;
   ended_at: string | null;
+  paused_at: string | null;
   events: SleepEvent[];
   phases: SleepPhase[];
+  status: SessionStatus;
   finalized: boolean;
   exported: boolean;
   stats: SessionStats | null;
@@ -90,6 +94,8 @@ export interface UserConfig {
   sleep_onset_minutes: number;
   fall_asleep_latency_minutes: number;
   auto_finalize_hours: number;
+  skip_event_review: boolean;
+  skip_phase_review: boolean;
   export_url: string | null;
   export_headers: Record<string, string>;
   retention_days: number;

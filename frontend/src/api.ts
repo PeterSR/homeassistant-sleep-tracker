@@ -33,6 +33,41 @@ export class SleepTrackerApi {
     return this.hass.callWS({ type: "sleep_tracker/stop_sleep" });
   }
 
+  async pauseSleep(): Promise<SleepSession> {
+    return this.hass.callWS({ type: "sleep_tracker/pause_sleep" });
+  }
+
+  async completeSession(session_id: string): Promise<SleepSession> {
+    return this.hass.callWS({
+      type: "sleep_tracker/complete_session",
+      session_id,
+    });
+  }
+
+  async editEvent(
+    session_id: string,
+    event_index: number,
+    event_type: "awake" | "still_awake" | "fell_asleep"
+  ): Promise<SleepSession> {
+    return this.hass.callWS({
+      type: "sleep_tracker/edit_event",
+      session_id,
+      event_index,
+      event_type,
+    });
+  }
+
+  async deleteEvent(
+    session_id: string,
+    event_index: number
+  ): Promise<SleepSession> {
+    return this.hass.callWS({
+      type: "sleep_tracker/delete_event",
+      session_id,
+      event_index,
+    });
+  }
+
   async reopenSession(session_id: string): Promise<SleepSession> {
     return this.hass.callWS({
       type: "sleep_tracker/reopen_session",
@@ -125,6 +160,8 @@ export class SleepTrackerApi {
         | "sleep_onset_minutes"
         | "fall_asleep_latency_minutes"
         | "auto_finalize_hours"
+        | "skip_event_review"
+        | "skip_phase_review"
         | "export_url"
         | "export_headers"
         | "retention_days"

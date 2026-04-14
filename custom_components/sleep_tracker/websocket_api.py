@@ -10,7 +10,7 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 
-from .const import DOMAIN, EVENT_AWAKE, EVENT_FELL_ASLEEP, EVENT_STILL_AWAKE
+from .const import DOMAIN, EVENT_AWAKE, EVENT_FELL_ASLEEP, EVENT_STILL_AWAKE, USER_EVENT_TYPES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -23,8 +23,12 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_get_stats)
     websocket_api.async_register_command(hass, ws_start_sleep)
     websocket_api.async_register_command(hass, ws_stop_sleep)
+    websocket_api.async_register_command(hass, ws_pause_sleep)
     websocket_api.async_register_command(hass, ws_reopen_session)
     websocket_api.async_register_command(hass, ws_event)
+    websocket_api.async_register_command(hass, ws_complete_session)
+    websocket_api.async_register_command(hass, ws_edit_event)
+    websocket_api.async_register_command(hass, ws_delete_event)
     websocket_api.async_register_command(hass, ws_setup_user)
     websocket_api.async_register_command(hass, ws_update_settings)
     websocket_api.async_register_command(hass, ws_delete_phase)
@@ -160,6 +164,26 @@ async def ws_stop_sleep(
         connection.send_error(msg["id"], "stop_failed", str(err))
 
 
+# --- Pause Sleep ---
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): "sleep_tracker/pause_sleep"}
+)
+@websocket_api.async_response
+async def ws_pause_sleep(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Pause the active sleep session."""
+    coordinator = _get_data(hass)["coordinator"]
+    user_id = connection.user.id
+
+    try:
+        session = await coordinator.async_pause_sleep(user_id, source="panel")
+        connection.send_result(msg["id"], session)
+    except ValueError as err:
+        connection.send_error(msg["id"], "pause_failed", str(err))
+
+
 # --- Reopen Session ---
 
 @websocket_api.websocket_command(
@@ -210,6 +234,84 @@ async def ws_event(
         connection.send_error(msg["id"], "event_failed", str(err))
 
 
+# --- Complete Session ---
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "sleep_tracker/complete_session",
+        vol.Required("session_id"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_complete_session(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Complete event review: materialize phases from events."""
+    coordinator = _get_data(hass)["coordinator"]
+    user_id = connection.user.id
+
+    try:
+        session = await coordinator.async_complete_session(user_id, msg["session_id"])
+        connection.send_result(msg["id"], session)
+    except ValueError as err:
+        connection.send_error(msg["id"], "complete_failed", str(err))
+
+
+# --- Edit Event ---
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "sleep_tracker/edit_event",
+        vol.Required("session_id"): str,
+        vol.Required("event_index"): int,
+        vol.Required("event_type"): vol.In(
+            [EVENT_AWAKE, EVENT_STILL_AWAKE, EVENT_FELL_ASLEEP]
+        ),
+    }
+)
+@websocket_api.async_response
+async def ws_edit_event(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Change the type of an event during event review."""
+    coordinator = _get_data(hass)["coordinator"]
+    user_id = connection.user.id
+
+    try:
+        session = await coordinator.async_edit_event(
+            user_id, msg["session_id"], msg["event_index"], msg["event_type"]
+        )
+        connection.send_result(msg["id"], session)
+    except ValueError as err:
+        connection.send_error(msg["id"], "edit_failed", str(err))
+
+
+# --- Delete Event ---
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "sleep_tracker/delete_event",
+        vol.Required("session_id"): str,
+        vol.Required("event_index"): int,
+    }
+)
+@websocket_api.async_response
+async def ws_delete_event(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Delete an event during event review."""
+    coordinator = _get_data(hass)["coordinator"]
+    user_id = connection.user.id
+
+    try:
+        session = await coordinator.async_delete_event(
+            user_id, msg["session_id"], msg["event_index"]
+        )
+        connection.send_result(msg["id"], session)
+    except ValueError as err:
+        connection.send_error(msg["id"], "delete_failed", str(err))
+
+
 # --- Setup User ---
 
 @websocket_api.websocket_command(
@@ -248,6 +350,8 @@ async def ws_setup_user(
         vol.Optional("auto_finalize_hours"): vol.All(
             int, vol.Range(min=1, max=48)
         ),
+        vol.Optional("skip_event_review"): bool,
+        vol.Optional("skip_phase_review"): bool,
         vol.Optional("export_url"): vol.Any(str, None),
         vol.Optional("export_headers"): dict,
         vol.Optional("retention_days"): vol.All(

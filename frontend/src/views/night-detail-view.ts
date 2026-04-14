@@ -63,7 +63,7 @@ export class NightDetailView extends LitElement {
   }
 
   private get _editable(): boolean {
-    return !!this._session && !this._session.finalized && !!this._session.ended_at;
+    return !!this._session && this._session.status === "completed";
   }
 
   private async _deletePhase(index: number) {
@@ -222,6 +222,12 @@ export class NightDetailView extends LitElement {
     }
     if (!this._session) {
       return html`<div class="container"><p>Session not found.</p></div>`;
+    }
+
+    // Stopped sessions (event review pending) should go to the review view
+    if (this._session.status === "stopped") {
+      this._navigate(`/review/${this._session.session_id}`);
+      return nothing;
     }
 
     const s = this._session;
@@ -496,7 +502,13 @@ export class NightDetailView extends LitElement {
                   ? "Woke up"
                   : e.event_type === "still_awake"
                     ? "Still awake"
-                    : "Fell asleep"}
+                    : e.event_type === "fell_asleep"
+                      ? "Fell asleep"
+                      : e.event_type === "pause"
+                        ? "Paused"
+                        : e.event_type === "resume"
+                          ? "Resumed"
+                          : e.event_type}
               </span>
               <span class="event-time">${formatTime(e.timestamp)}</span>
               <span class="event-source">${e.source}</span>
@@ -763,6 +775,10 @@ export class NightDetailView extends LitElement {
       }
       .event-type.fell_asleep {
         background: var(--sleep-color-asleep, #42a5f5);
+      }
+      .event-type.pause,
+      .event-type.resume {
+        background: var(--secondary-text-color);
       }
       .event-time {
         flex: 1;
