@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timedelta
-from typing import Any, Callable
+from typing import Any, Callable, NamedTuple
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.util import dt as dt_util
@@ -30,9 +30,10 @@ from .const import (
     PHASE_AWAKE,
     USER_EVENT_TYPES,
 )
-from .models import SleepEvent, SleepPhase, SleepSession
+from .models import ChecklistItem, SleepEvent, SleepPhase, SleepSession
 from .phases import (
     adjust_phase_boundary,
+    append_phase,
     compute_stats,
     delete_phase,
     materialize_phases,
@@ -43,6 +44,17 @@ from .store import SleepTrackerStore
 _LOGGER = logging.getLogger(__name__)
 
 
+class PhaseSnapshot(NamedTuple):
+    """Undo snapshot: phase list plus the session's ended_at at edit time.
+
+    ended_at is tracked because append_phase extends the session boundary,
+    so undo must restore it alongside phases.
+    """
+
+    phases: list[SleepPhase]
+    ended_at: str | None
+
+
 class SleepTrackerCoordinator:
     """Brain of the sleep tracker — session management and state queries."""
 
@@ -51,8 +63,8 @@ class SleepTrackerCoordinator:
         self.store = store
         self._listeners: list[Callable[[], None]] = []
         self._user_listeners: dict[str, list[Callable[[], None]]] = {}
-        # In-memory edit history for undo: session_id -> list of phase snapshots
-        self._edit_history: dict[str, list[list[SleepPhase]]] = {}
+        # In-memory edit history for undo: session_id -> list of snapshots
+        self._edit_history: dict[str, list[PhaseSnapshot]] = {}
         self._max_history = 30
 
     # --- Listener management ---
@@ -99,6 +111,11 @@ class SleepTrackerCoordinator:
         """Set up sleep tracking for a user. Creates entities dynamically."""
         from .models import UserConfig
 
+        if "checklist" in kwargs:
+            kwargs["checklist"] = [
+                ChecklistItem.from_dict(item) for item in kwargs["checklist"]
+            ]
+
         config = UserConfig(
             user_id=user_id,
             display_name=display_name,
@@ -116,6 +133,11 @@ class SleepTrackerCoordinator:
         config = self.store.get_user_config(user_id)
         if config is None:
             raise ValueError(f"User {user_id} is not set up")
+
+        if "checklist" in kwargs:
+            kwargs["checklist"] = [
+                ChecklistItem.from_dict(item) for item in kwargs["checklist"]
+            ]
 
         for key, value in kwargs.items():
             if hasattr(config, key) and key != "user_id":
@@ -296,6 +318,15 @@ class SleepTrackerCoordinator:
                 f"User {user_id} already has an active session: {active.session_id}"
             )
 
+        # Block reopen if there's a newer session (would violate chronological order)
+        for other in self.store.sessions.values():
+            if (
+                other.user_id == user_id
+                and other.session_id != session_id
+                and other.started_at > session.started_at
+            ):
+                raise ValueError("Cannot resume: a newer session exists")
+
         self.store.update_session(session_id, ended_at=None, phases=None)
         # Clear any phase edit history for this session
         self._edit_history.pop(session_id, None)
@@ -468,11 +499,13 @@ class SleepTrackerCoordinator:
     ) -> dict:
         """Update session metadata (note, ratings, tags).
 
-        Works on any session status — metadata is reflective, not timeline data.
+        Blocked on finalized sessions — unfinalize first to edit.
         """
         session = self.store.get_session(session_id)
         if session is None or session.user_id != user_id:
             raise ValueError("Session not found")
+        if session.finalized:
+            raise ValueError("Cannot edit a finalized session")
 
         allowed = {"note", "rating_quality", "rating_feeling", "tags"}
         updates = {}
@@ -512,12 +545,12 @@ class SleepTrackerCoordinator:
     # --- Phase editing (only for stopped, non-finalized sessions) ---
 
     def _push_edit_history(self, session: SleepSession) -> None:
-        """Snapshot current phases for undo."""
+        """Snapshot current phases and ended_at for undo."""
         if session.phases is None:
             return
         history = self._edit_history.setdefault(session.session_id, [])
-        snapshot = [SleepPhase(p.start, p.end, p.state) for p in session.phases]
-        history.append(snapshot)
+        phases = [SleepPhase(p.start, p.end, p.state) for p in session.phases]
+        history.append(PhaseSnapshot(phases=phases, ended_at=session.ended_at))
         if len(history) > self._max_history:
             history.pop(0)
 
@@ -597,6 +630,25 @@ class SleepTrackerCoordinator:
         self._notify_listeners(user_id)
         return self._session_to_dict(session)
 
+    async def async_append_phase(
+        self,
+        user_id: str,
+        session_id: str,
+        state: str,
+        end_timestamp: str,
+    ) -> dict:
+        """Append a new phase at the end, extending session.ended_at."""
+        session = self._get_editable_session(user_id, session_id)
+        assert session.phases is not None
+
+        new_phases = append_phase(session.phases, state, end_timestamp)
+        self._push_edit_history(session)
+        self.store.update_session(
+            session_id, phases=new_phases, ended_at=end_timestamp
+        )
+        self._notify_listeners(user_id)
+        return self._session_to_dict(session)
+
     async def async_undo_edit(self, user_id: str, session_id: str) -> dict:
         """Undo the most recent phase edit on a session."""
         session = self._get_editable_session(user_id, session_id)
@@ -604,8 +656,10 @@ class SleepTrackerCoordinator:
         if not history:
             raise ValueError("Nothing to undo")
 
-        previous_phases = history.pop()
-        self.store.update_session(session_id, phases=previous_phases)
+        snapshot = history.pop()
+        self.store.update_session(
+            session_id, phases=snapshot.phases, ended_at=snapshot.ended_at
+        )
         self._notify_listeners(user_id)
         return self._session_to_dict(session)
 
@@ -644,6 +698,21 @@ class SleepTrackerCoordinator:
             "sleep_tracker_session_finalized",
             {"user_id": user_id, "session_id": session_id},
         )
+        return self._session_to_dict(session)
+
+    async def async_unfinalize_session(
+        self, user_id: str, session_id: str
+    ) -> dict:
+        """Unfinalize a session — escape hatch to edit metadata/phases again."""
+        session = self.store.get_session(session_id)
+        if session is None or session.user_id != user_id:
+            raise ValueError("Session not found")
+        if not session.finalized:
+            raise ValueError("Session is not finalized")
+
+        self.store.update_session(session_id, finalized=False)
+        self._notify_listeners(user_id)
+        _LOGGER.info("Session %s unfinalized for user %s", session_id, user_id)
         return self._session_to_dict(session)
 
     async def _async_auto_finalize(self, user_id: str) -> None:

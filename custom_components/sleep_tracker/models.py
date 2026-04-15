@@ -6,6 +6,49 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
+CHECKLIST_TYPE_ENTITY = "entity"
+CHECKLIST_TYPE_TEXT = "text"
+
+
+@dataclass
+class ChecklistItem:
+    """A pre-sleep checklist item — either an entity state check or free text."""
+
+    type: str  # CHECKLIST_TYPE_ENTITY or CHECKLIST_TYPE_TEXT
+    entity_id: str | None = None
+    desired_state: str | None = None
+    text: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.type == CHECKLIST_TYPE_ENTITY:
+            if not self.entity_id:
+                raise ValueError("entity checklist item requires entity_id")
+        elif self.type == CHECKLIST_TYPE_TEXT:
+            if not self.text:
+                raise ValueError("text checklist item requires text")
+        else:
+            raise ValueError(f"Invalid checklist item type: {self.type}")
+
+    def to_dict(self) -> dict[str, Any]:
+        data: dict[str, Any] = {"type": self.type}
+        if self.entity_id is not None:
+            data["entity_id"] = self.entity_id
+        if self.desired_state is not None:
+            data["desired_state"] = self.desired_state
+        if self.text is not None:
+            data["text"] = self.text
+        return data
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ChecklistItem:
+        return cls(
+            type=data["type"],
+            entity_id=data.get("entity_id"),
+            desired_state=data.get("desired_state"),
+            text=data.get("text"),
+        )
+
+
 @dataclass
 class UserConfig:
     """Per-user sleep tracking configuration."""
@@ -21,7 +64,7 @@ class UserConfig:
     export_url: str | None = None
     export_headers: dict[str, str] = field(default_factory=dict)
     retention_days: int = 90
-    checklist: list[dict[str, Any]] = field(default_factory=list)
+    checklist: list[ChecklistItem] = field(default_factory=list)
     show_note: bool = True
     show_rating_quality: bool = True
     show_rating_feeling: bool = True
@@ -44,7 +87,7 @@ class UserConfig:
             "export_url": self.export_url,
             "export_headers": self.export_headers,
             "retention_days": self.retention_days,
-            "checklist": self.checklist,
+            "checklist": [item.to_dict() for item in self.checklist],
             "show_note": self.show_note,
             "show_rating_quality": self.show_rating_quality,
             "show_rating_feeling": self.show_rating_feeling,
@@ -69,7 +112,9 @@ class UserConfig:
             export_url=data.get("export_url"),
             export_headers=data.get("export_headers", {}),
             retention_days=data.get("retention_days", 90),
-            checklist=data.get("checklist", []),
+            checklist=[
+                ChecklistItem.from_dict(item) for item in data.get("checklist", [])
+            ],
             show_note=data.get("show_note", True),
             show_rating_quality=data.get("show_rating_quality", True),
             show_rating_feeling=data.get("show_rating_feeling", True),

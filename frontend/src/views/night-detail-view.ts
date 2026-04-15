@@ -25,7 +25,10 @@ export class NightDetailView extends LitElement {
   @state() private _editingBoundary: BoundaryEdit | null = null;
   @state() private _splittingPhaseIndex: number | null = null;
   @state() private _showEvents = false;
+  @state() private _showPhases = true;
   @state() private _confirmDelete = false;
+  @state() private _confirmResume = false;
+  @state() private _appendingPhase: { state: "awake" | "asleep"; endTime: string } | null = null;
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -266,6 +269,88 @@ export class NightDetailView extends LitElement {
     }
   }
 
+  private async _unfinalize() {
+    if (!this._session || this._busy) return;
+    this._busy = true;
+    try {
+      this._session = await this.api.unfinalizeSession(this._session.session_id);
+    } catch (err) {
+      console.error("Unfinalize failed:", err);
+    } finally {
+      this._busy = false;
+    }
+  }
+
+  private get _canResume(): boolean {
+    if (!this._session) return false;
+    if (this._session.status !== "completed") return false;
+    return this.userState?.last_session?.session_id === this._session.session_id;
+  }
+
+  private async _resumeSession() {
+    if (!this._session || this._busy) return;
+    this._busy = true;
+    try {
+      await this.api.reopenSession(this._session.session_id);
+      this._confirmResume = false;
+      this._navigate("/");
+    } catch (err) {
+      console.error("Resume failed:", err);
+    } finally {
+      this._busy = false;
+    }
+  }
+
+  private _openAppendPhase() {
+    if (!this._session?.phases?.length) return;
+    const last = this._session.phases[this._session.phases.length - 1];
+    const lastEnd = new Date(last.end);
+    const now = new Date();
+    // Default end: now if > last.end, else last.end + 5 minutes
+    const defaultEnd = now.getTime() > lastEnd.getTime()
+      ? now
+      : new Date(lastEnd.getTime() + 5 * 60_000);
+    // Default state: opposite of last phase
+    const defaultState = last.state === "asleep" ? "awake" : "asleep";
+    this._appendingPhase = {
+      state: defaultState,
+      endTime: this._toTimeInput(defaultEnd.toISOString()),
+    };
+  }
+
+  private async _confirmAppendPhase() {
+    if (!this._session || !this._appendingPhase || this._busy) return;
+    const last = this._session.phases?.[this._session.phases.length - 1];
+    if (!last) return;
+
+    const { state, endTime } = this._appendingPhase;
+    // Build an ISO timestamp from the time input, anchored to the last phase's date.
+    const lastEndDate = new Date(last.end);
+    const [h, m] = endTime.split(":").map(Number);
+    const newEnd = new Date(lastEndDate);
+    newEnd.setHours(h, m, 0, 0);
+    // If the new end would be <= last.end, roll forward one day (e.g. user is
+    // adding a phase past midnight).
+    if (newEnd.getTime() <= lastEndDate.getTime()) {
+      newEnd.setDate(newEnd.getDate() + 1);
+    }
+    const iso = this._toLocalIso(newEnd);
+
+    this._busy = true;
+    try {
+      this._session = await this.api.appendPhase(
+        this._session.session_id,
+        state,
+        iso
+      );
+      this._appendingPhase = null;
+    } catch (err) {
+      console.error("Append phase failed:", err);
+    } finally {
+      this._busy = false;
+    }
+  }
+
   render() {
     if (this._loading) {
       return html`<div class="container"><p>Loading...</p></div>`;
@@ -344,8 +429,16 @@ export class NightDetailView extends LitElement {
 
         <div class="section">
           <div class="section-header">
-            <h3>Phases (${phases.length})</h3>
-            ${editable && (s.undo_count ?? 0) > 0
+            <h3>
+              <button
+                class="toggle-btn"
+                @click=${() => { this._showPhases = !this._showPhases; }}
+              >
+                <ha-icon icon=${this._showPhases ? "mdi:chevron-down" : "mdi:chevron-right"}></ha-icon>
+                Phases (${phases.length})
+              </button>
+            </h3>
+            ${this._showPhases && editable && (s.undo_count ?? 0) > 0
               ? html`
                   <button
                     class="undo-btn"
@@ -359,7 +452,7 @@ export class NightDetailView extends LitElement {
                 `
               : nothing}
           </div>
-          ${this._renderPhaseList(phases, editable)}
+          ${this._showPhases ? this._renderPhaseList(phases, editable) : nothing}
         </div>
 
         <div class="section">
@@ -408,15 +501,135 @@ export class NightDetailView extends LitElement {
             `
           : nothing}
 
-        <div class="delete-section">
+        <div class="footer-actions">
+          ${this._canResume
+            ? html`
+                <button
+                  class="minor-btn"
+                  ?disabled=${this._busy}
+                  @click=${() => { this._confirmResume = true; }}
+                  title="Resume this session"
+                >
+                  <ha-icon icon="mdi:play-circle-outline"></ha-icon>
+                  Resume Session
+                </button>
+              `
+            : nothing}
+          ${s.finalized
+            ? html`
+                <button
+                  class="minor-btn"
+                  ?disabled=${this._busy}
+                  @click=${this._unfinalize}
+                  title="Re-enable editing"
+                >
+                  <ha-icon icon="mdi:lock-open-variant-outline"></ha-icon>
+                  Unfinalize
+                </button>
+              `
+            : nothing}
           <button
-            class="delete-session-btn"
+            class="minor-btn danger"
             @click=${() => { this._confirmDelete = true; }}
           >
             <ha-icon icon="mdi:trash-can-outline"></ha-icon>
             Delete Session
           </button>
         </div>
+
+        ${this._confirmResume
+          ? html`
+              <div class="confirm-overlay" @click=${() => { this._confirmResume = false; }}>
+                <ha-card class="confirm-card" @click=${(e: Event) => e.stopPropagation()}>
+                  <h3>Resume this session?</h3>
+                  <p>
+                    The materialized phases will be discarded. Events become the source of
+                    truth again until you stop the session. Any phase edits you've made will
+                    be lost.
+                  </p>
+                  <div class="confirm-actions">
+                    <button
+                      class="confirm-cancel"
+                      @click=${() => { this._confirmResume = false; }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      class="confirm-primary"
+                      ?disabled=${this._busy}
+                      @click=${this._resumeSession}
+                    >
+                      ${this._busy ? "Resuming..." : "Resume"}
+                    </button>
+                  </div>
+                </ha-card>
+              </div>
+            `
+          : nothing}
+
+        ${this._appendingPhase
+          ? html`
+              <div class="confirm-overlay" @click=${() => { this._appendingPhase = null; }}>
+                <ha-card class="confirm-card" @click=${(e: Event) => e.stopPropagation()}>
+                  <h3>Add phase</h3>
+                  <p>
+                    From ${phases.length ? formatTime(phases[phases.length - 1].end) : ""}
+                  </p>
+                  <div class="append-state-row">
+                    <button
+                      class="append-state-btn ${this._appendingPhase.state === "awake" ? "active" : ""}"
+                      @click=${() => {
+                        if (this._appendingPhase) {
+                          this._appendingPhase = { ...this._appendingPhase, state: "awake" };
+                        }
+                      }}
+                    >
+                      Awake
+                    </button>
+                    <button
+                      class="append-state-btn ${this._appendingPhase.state === "asleep" ? "active" : ""}"
+                      @click=${() => {
+                        if (this._appendingPhase) {
+                          this._appendingPhase = { ...this._appendingPhase, state: "asleep" };
+                        }
+                      }}
+                    >
+                      Asleep
+                    </button>
+                  </div>
+                  <div class="append-time-row">
+                    <label>Until</label>
+                    <input
+                      type="time"
+                      class="time-input"
+                      .value=${this._appendingPhase.endTime}
+                      @input=${(e: Event) => {
+                        const val = (e.target as HTMLInputElement).value;
+                        if (this._appendingPhase) {
+                          this._appendingPhase = { ...this._appendingPhase, endTime: val };
+                        }
+                      }}
+                    />
+                  </div>
+                  <div class="confirm-actions">
+                    <button
+                      class="confirm-cancel"
+                      @click=${() => { this._appendingPhase = null; }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      class="confirm-primary"
+                      ?disabled=${this._busy}
+                      @click=${this._confirmAppendPhase}
+                    >
+                      ${this._busy ? "Adding..." : "Add"}
+                    </button>
+                  </div>
+                </ha-card>
+              </div>
+            `
+          : nothing}
 
         ${this._confirmDelete
           ? html`
@@ -551,6 +764,18 @@ export class NightDetailView extends LitElement {
               : nothing}
           `;
         })}
+        ${editable
+          ? html`
+              <button
+                class="add-phase-btn"
+                ?disabled=${this._busy}
+                @click=${this._openAppendPhase}
+              >
+                <ha-icon icon="mdi:plus-circle-outline"></ha-icon>
+                Add phase
+              </button>
+            `
+          : nothing}
       </div>
     `;
   }
@@ -917,12 +1142,15 @@ export class NightDetailView extends LitElement {
         color: var(--secondary-text-color);
       }
 
-      /* Delete session */
-      .delete-section {
+      /* Footer actions (unfinalize / delete) */
+      .footer-actions {
         margin-top: var(--ha-space-8, 32px);
-        text-align: center;
+        display: flex;
+        justify-content: center;
+        gap: var(--ha-space-4, 16px);
+        flex-wrap: wrap;
       }
-      .delete-session-btn {
+      .minor-btn {
         display: inline-flex;
         align-items: center;
         gap: var(--ha-space-2, 8px);
@@ -935,8 +1163,15 @@ export class NightDetailView extends LitElement {
         font-family: inherit;
         --mdc-icon-size: 16px;
       }
-      .delete-session-btn:hover {
+      .minor-btn:hover {
+        color: var(--primary-color, #03a9f4);
+      }
+      .minor-btn.danger:hover {
         color: var(--sleep-color-awake, #ef5350);
+      }
+      .minor-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
       }
 
       /* Confirm overlay */
@@ -1008,6 +1243,81 @@ export class NightDetailView extends LitElement {
       .confirm-delete:disabled {
         opacity: 0.5;
         cursor: not-allowed;
+      }
+      .confirm-primary {
+        padding: var(--ha-space-2, 8px) var(--ha-space-4, 16px);
+        background: var(--primary-color, #03a9f4);
+        color: white;
+        border: none;
+        border-radius: var(--ha-border-radius-md, 8px);
+        font-size: var(--ha-font-size-m, 14px);
+        font-weight: var(--ha-font-weight-medium, 500);
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .confirm-primary:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      /* Add-phase button */
+      .add-phase-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--ha-space-2, 8px);
+        width: 100%;
+        padding: var(--ha-space-2, 8px);
+        margin-top: var(--ha-space-2, 8px);
+        background: none;
+        border: 1px dashed var(--divider-color, #e0e0e0);
+        border-radius: var(--ha-border-radius-md, 8px);
+        color: var(--secondary-text-color);
+        font-size: var(--ha-font-size-s, 12px);
+        cursor: pointer;
+        font-family: inherit;
+        --mdc-icon-size: 18px;
+      }
+      .add-phase-btn:hover {
+        border-color: var(--primary-color, #03a9f4);
+        color: var(--primary-color, #03a9f4);
+      }
+      .add-phase-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      /* Append-phase modal */
+      .append-state-row {
+        display: flex;
+        gap: var(--ha-space-2, 8px);
+        margin-bottom: var(--ha-space-3, 12px);
+      }
+      .append-state-btn {
+        flex: 1;
+        padding: var(--ha-space-2, 8px);
+        border: 1px solid var(--divider-color, #e0e0e0);
+        border-radius: var(--ha-border-radius-md, 8px);
+        background: var(--card-background-color, white);
+        color: var(--primary-text-color);
+        font-size: var(--ha-font-size-m, 14px);
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .append-state-btn.active {
+        background: var(--primary-color, #03a9f4);
+        border-color: var(--primary-color, #03a9f4);
+        color: white;
+      }
+      .append-time-row {
+        display: flex;
+        align-items: center;
+        gap: var(--ha-space-3, 12px);
+        margin-bottom: var(--ha-space-3, 12px);
+      }
+      .append-time-row label {
+        font-size: var(--ha-font-size-m, 14px);
+        color: var(--secondary-text-color);
       }
     `,
   ];

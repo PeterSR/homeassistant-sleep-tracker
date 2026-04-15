@@ -10,10 +10,15 @@ export class SessionMeta extends LitElement {
   @property({ attribute: false }) api!: SleepTrackerApi;
   @property({ attribute: false }) session!: SleepSession;
   @property({ attribute: false }) config!: UserConfig;
+  @property({ type: Boolean }) readonly = false;
 
   @state() private _noteValue = "";
   @state() private _newTag = "";
   @state() private _busy = false;
+
+  private get _locked(): boolean {
+    return this.readonly || this.session?.status === "finalized";
+  }
 
   willUpdate(changed: Map<string, unknown>): void {
     if (changed.has("session")) {
@@ -32,7 +37,7 @@ export class SessionMeta extends LitElement {
   }
 
   private async _saveNote() {
-    if (!this.session || this._busy) return;
+    if (!this.session || this._busy || this._locked) return;
     const note = this._noteValue.trim() || null;
     if (note === (this.session.note || null)) return;
     this._busy = true;
@@ -50,7 +55,7 @@ export class SessionMeta extends LitElement {
   }
 
   private async _setRating(field: "rating_quality" | "rating_feeling", value: number) {
-    if (!this.session || this._busy) return;
+    if (!this.session || this._busy || this._locked) return;
     const current = this.session[field];
     const newValue = current === value ? null : value;
     this._busy = true;
@@ -68,7 +73,7 @@ export class SessionMeta extends LitElement {
   }
 
   private async _toggleTag(tag: string) {
-    if (!this.session || this._busy) return;
+    if (!this.session || this._busy || this._locked) return;
     const current = this.session.tags || [];
     const tags = current.includes(tag)
       ? current.filter((t) => t !== tag)
@@ -89,7 +94,7 @@ export class SessionMeta extends LitElement {
 
   private async _addNewTag() {
     const tag = this._newTag.trim().toLowerCase();
-    if (!tag || !this.session || this._busy) return;
+    if (!tag || !this.session || this._busy || this._locked) return;
     this._newTag = "";
     const current = this.session.tags || [];
     if (current.includes(tag)) return;
@@ -109,12 +114,13 @@ export class SessionMeta extends LitElement {
   }
 
   private _hasAnyVisible(): boolean {
-    return (
-      this.config.show_note ||
-      this.config.show_rating_quality ||
-      this.config.show_rating_feeling ||
-      this.config.show_tags
-    );
+    const locked = this._locked;
+    const s = this.session;
+    const showQ = this.config.show_rating_quality && (!locked || s.rating_quality != null);
+    const showF = this.config.show_rating_feeling && (!locked || s.rating_feeling != null);
+    const showT = this.config.show_tags && (!locked || (s.tags?.length ?? 0) > 0);
+    const showN = this.config.show_note && (!locked || !!s.note);
+    return showQ || showF || showT || showN;
   }
 
   render() {
@@ -122,24 +128,31 @@ export class SessionMeta extends LitElement {
       return nothing;
     }
 
+    const locked = this._locked;
+    const s = this.session;
+
     return html`
       <div class="meta-section">
-        ${this.config.show_rating_quality
+        ${this.config.show_rating_quality && (!locked || s.rating_quality != null)
           ? this._renderRating(
               "Sleep quality",
               "rating_quality",
-              this.session.rating_quality
+              s.rating_quality
             )
           : nothing}
-        ${this.config.show_rating_feeling
+        ${this.config.show_rating_feeling && (!locked || s.rating_feeling != null)
           ? this._renderRating(
               "How do you feel?",
               "rating_feeling",
-              this.session.rating_feeling
+              s.rating_feeling
             )
           : nothing}
-        ${this.config.show_tags ? this._renderTags() : nothing}
-        ${this.config.show_note ? this._renderNote() : nothing}
+        ${this.config.show_tags && (!locked || (s.tags?.length ?? 0) > 0)
+          ? this._renderTags()
+          : nothing}
+        ${this.config.show_note && (!locked || !!s.note)
+          ? this._renderNote()
+          : nothing}
       </div>
     `;
   }
@@ -157,7 +170,7 @@ export class SessionMeta extends LitElement {
             (n) => html`
               <button
                 class="rating-btn ${value === n ? "active" : ""}"
-                ?disabled=${this._busy}
+                ?disabled=${this._busy || this._locked}
                 @click=${() => this._setRating(field, n)}
                 title="${n}"
               >
@@ -173,8 +186,12 @@ export class SessionMeta extends LitElement {
   private _renderTags() {
     const sessionTags = this.session.tags || [];
     const available = this.config.available_tags || [];
-    // Show available tags + any session tags not in available
-    const allTags = [...new Set([...available, ...sessionTags])];
+    const locked = this._locked;
+    // Show available tags + any session tags not in available.
+    // When locked, show only the session's tags (read-only view).
+    const allTags = locked
+      ? sessionTags
+      : [...new Set([...available, ...sessionTags])];
 
     return html`
       <div class="tags-section">
@@ -184,27 +201,31 @@ export class SessionMeta extends LitElement {
             (tag) => html`
               <button
                 class="tag-chip ${sessionTags.includes(tag) ? "active" : ""}"
-                ?disabled=${this._busy}
+                ?disabled=${this._busy || locked}
                 @click=${() => this._toggleTag(tag)}
               >
                 ${tag}
               </button>
             `
           )}
-          <div class="tag-input-wrapper">
-            <input
-              type="text"
-              class="tag-input"
-              placeholder="new tag..."
-              .value=${this._newTag}
-              @input=${(e: Event) => {
-                this._newTag = (e.target as HTMLInputElement).value;
-              }}
-              @keydown=${(e: KeyboardEvent) => {
-                if (e.key === "Enter") this._addNewTag();
-              }}
-            />
-          </div>
+          ${locked
+            ? nothing
+            : html`
+                <div class="tag-input-wrapper">
+                  <input
+                    type="text"
+                    class="tag-input"
+                    placeholder="new tag..."
+                    .value=${this._newTag}
+                    @input=${(e: Event) => {
+                      this._newTag = (e.target as HTMLInputElement).value;
+                    }}
+                    @keydown=${(e: KeyboardEvent) => {
+                      if (e.key === "Enter") this._addNewTag();
+                    }}
+                  />
+                </div>
+              `}
         </div>
       </div>
     `;
@@ -217,6 +238,7 @@ export class SessionMeta extends LitElement {
           class="note-input"
           rows="2"
           placeholder="Add a note..."
+          ?readonly=${this._locked}
           .value=${this._noteValue}
           @input=${(e: Event) => {
             this._noteValue = (e.target as HTMLTextAreaElement).value;
@@ -283,6 +305,10 @@ export class SessionMeta extends LitElement {
         opacity: 0.5;
         cursor: not-allowed;
       }
+      .rating-btn.active:disabled {
+        opacity: 1;
+        cursor: default;
+      }
 
       /* Tags */
       .tags-section {
@@ -322,6 +348,14 @@ export class SessionMeta extends LitElement {
       .tag-chip:disabled {
         opacity: 0.5;
         cursor: not-allowed;
+      }
+      .tag-chip.active:disabled {
+        opacity: 1;
+        cursor: default;
+      }
+      .note-input[readonly] {
+        background: transparent;
+        border-style: dashed;
       }
       .tag-input-wrapper {
         display: inline-flex;

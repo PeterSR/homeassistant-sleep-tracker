@@ -11,6 +11,16 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 
 from .const import DOMAIN, EVENT_AWAKE, EVENT_FELL_ASLEEP, EVENT_STILL_AWAKE, USER_EVENT_TYPES
+from .models import CHECKLIST_TYPE_ENTITY, CHECKLIST_TYPE_TEXT
+
+CHECKLIST_ITEM_SCHEMA = vol.Schema(
+    {
+        vol.Required("type"): vol.In([CHECKLIST_TYPE_ENTITY, CHECKLIST_TYPE_TEXT]),
+        vol.Optional("entity_id"): str,
+        vol.Optional("desired_state"): str,
+        vol.Optional("text"): str,
+    }
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,11 +44,13 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_delete_phase)
     websocket_api.async_register_command(hass, ws_split_phase)
     websocket_api.async_register_command(hass, ws_adjust_phase_boundary)
+    websocket_api.async_register_command(hass, ws_append_phase)
     websocket_api.async_register_command(hass, ws_undo_edit)
     websocket_api.async_register_command(hass, ws_delete_session)
     websocket_api.async_register_command(hass, ws_update_session_meta)
     websocket_api.async_register_command(hass, ws_get_tag_usage)
     websocket_api.async_register_command(hass, ws_finalize_session)
+    websocket_api.async_register_command(hass, ws_unfinalize_session)
     websocket_api.async_register_command(hass, ws_export_session)
     websocket_api.async_register_command(hass, ws_subscribe)
 
@@ -359,7 +371,7 @@ async def ws_setup_user(
         vol.Optional("retention_days"): vol.All(
             int, vol.Range(min=7, max=365)
         ),
-        vol.Optional("checklist"): list,
+        vol.Optional("checklist"): [CHECKLIST_ITEM_SCHEMA],
         vol.Optional("show_note"): bool,
         vol.Optional("show_rating_quality"): bool,
         vol.Optional("show_rating_feeling"): bool,
@@ -476,6 +488,33 @@ async def ws_adjust_phase_boundary(
         connection.send_result(msg["id"], session)
     except ValueError as err:
         connection.send_error(msg["id"], "adjust_failed", str(err))
+
+
+# --- Append Phase ---
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "sleep_tracker/append_phase",
+        vol.Required("session_id"): str,
+        vol.Required("state"): vol.In(["awake", "asleep"]),
+        vol.Required("end_timestamp"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_append_phase(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Append a new phase at the end of the session."""
+    coordinator = _get_data(hass)["coordinator"]
+    user_id = connection.user.id
+
+    try:
+        session = await coordinator.async_append_phase(
+            user_id, msg["session_id"], msg["state"], msg["end_timestamp"]
+        )
+        connection.send_result(msg["id"], session)
+    except ValueError as err:
+        connection.send_error(msg["id"], "append_failed", str(err))
 
 
 # --- Undo Edit ---
@@ -607,6 +646,31 @@ async def ws_finalize_session(
         connection.send_result(msg["id"], session)
     except ValueError as err:
         connection.send_error(msg["id"], "finalize_failed", str(err))
+
+
+# --- Unfinalize Session ---
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "sleep_tracker/unfinalize_session",
+        vol.Required("session_id"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_unfinalize_session(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Unfinalize a session (escape hatch to re-enable edits)."""
+    coordinator = _get_data(hass)["coordinator"]
+    user_id = connection.user.id
+
+    try:
+        session = await coordinator.async_unfinalize_session(
+            user_id, msg["session_id"]
+        )
+        connection.send_result(msg["id"], session)
+    except ValueError as err:
+        connection.send_error(msg["id"], "unfinalize_failed", str(err))
 
 
 # --- Export Session ---

@@ -358,6 +358,37 @@ def split_phase(
     return new_phases
 
 
+def append_phase(
+    phases: list[SleepPhase],
+    state: str,
+    end_timestamp: str,
+) -> list[SleepPhase]:
+    """Append a new phase after the last one.
+
+    The new phase spans [last.end, end_timestamp] with the given state. If
+    state matches the last phase's state, the last phase is extended instead
+    (preserves the bipartite invariant).
+    """
+    if state not in (PHASE_AWAKE, PHASE_ASLEEP):
+        raise ValueError(f"Invalid state: {state}")
+    if not phases:
+        raise ValueError("Cannot append to empty phase list")
+
+    last = phases[-1]
+    last_end_dt = _parse(last.end)
+    new_end_dt = _parse(end_timestamp)
+
+    if new_end_dt <= last_end_dt:
+        raise ValueError("New end must be strictly after the last phase's end")
+
+    new_phases = list(phases)
+    if state == last.state:
+        new_phases[-1] = SleepPhase(last.start, end_timestamp, last.state)
+    else:
+        new_phases.append(SleepPhase(last.end, end_timestamp, state))
+    return new_phases
+
+
 def adjust_phase_boundary(
     phases: list[SleepPhase],
     after_index: int,

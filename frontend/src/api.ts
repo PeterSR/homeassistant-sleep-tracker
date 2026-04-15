@@ -132,6 +132,19 @@ export class SleepTrackerApi {
     });
   }
 
+  async appendPhase(
+    session_id: string,
+    state: "awake" | "asleep",
+    end_timestamp: string
+  ): Promise<SleepSession> {
+    return this.hass.callWS({
+      type: "sleep_tracker/append_phase",
+      session_id,
+      state,
+      end_timestamp,
+    });
+  }
+
   async undoEdit(session_id: string): Promise<SleepSession> {
     return this.hass.callWS({
       type: "sleep_tracker/undo_edit",
@@ -169,6 +182,13 @@ export class SleepTrackerApi {
   async finalizeSession(session_id: string): Promise<SleepSession> {
     return this.hass.callWS({
       type: "sleep_tracker/finalize_session",
+      session_id,
+    });
+  }
+
+  async unfinalizeSession(session_id: string): Promise<SleepSession> {
+    return this.hass.callWS({
+      type: "sleep_tracker/unfinalize_session",
       session_id,
     });
   }
