@@ -177,6 +177,9 @@ export class EventReviewView extends LitElement {
       return nothing;
     }
 
+    const phaseReviewSkipped = this.userState.config?.skip_phase_review ?? false;
+    const buttonLabel = phaseReviewSkipped ? "Finalize" : "Continue to phases";
+
     return html`
       <div class="container">
         <ha-card>
@@ -194,13 +197,17 @@ export class EventReviewView extends LitElement {
           </div>
         </ha-card>
 
-        <sleep-tracker-session-meta
-          .hass=${this.hass}
-          .api=${this.api}
-          .session=${s}
-          .config=${this.userState.config!}
-          @session-updated=${(e: CustomEvent) => { this._session = e.detail.session; }}
-        ></sleep-tracker-session-meta>
+        ${phaseReviewSkipped
+          ? html`
+              <sleep-tracker-session-meta
+                .hass=${this.hass}
+                .api=${this.api}
+                .session=${s}
+                .config=${this.userState.config!}
+                @session-updated=${(e: CustomEvent) => { this._session = e.detail.session; }}
+              ></sleep-tracker-session-meta>
+            `
+          : nothing}
 
         <div class="complete-section">
           <button
@@ -208,7 +215,7 @@ export class EventReviewView extends LitElement {
             ?disabled=${this._busy}
             @click=${this._complete}
           >
-            Looks Good
+            ${buttonLabel}
           </button>
         </div>
 

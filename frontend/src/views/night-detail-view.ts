@@ -425,6 +425,23 @@ export class NightDetailView extends LitElement {
             `
           : nothing}
 
+        ${editable
+          ? html`
+              <div class="finalize-section">
+                <button
+                  class="finalize-btn"
+                  ?disabled=${this._busy}
+                  @click=${this._finalize}
+                >
+                  ${this._busy ? "Finalizing..." : "Finalize Session"}
+                </button>
+                <p class="finalize-hint">
+                  Finalizing locks edits${this.userState.config?.export_url ? " and exports to your REST endpoint" : ""}.
+                </p>
+              </div>
+            `
+          : nothing}
+
         ${this._renderEnvironment()}
 
         <div class="section">
@@ -483,23 +500,6 @@ export class NightDetailView extends LitElement {
               `
             : nothing}
         </div>
-
-        ${editable
-          ? html`
-              <div class="finalize-section">
-                <button
-                  class="finalize-btn"
-                  ?disabled=${this._busy}
-                  @click=${this._finalize}
-                >
-                  ${this._busy ? "Finalizing..." : "Finalize Session"}
-                </button>
-                <p class="finalize-hint">
-                  Finalizing locks edits${this.userState.config?.export_url ? " and exports to your REST endpoint" : ""}.
-                </p>
-              </div>
-            `
-          : nothing}
 
         <div class="footer-actions">
           ${this._canResume
