@@ -1,6 +1,6 @@
 import { LitElement, html, css, nothing, type PropertyValues } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import type { HomeAssistant, UserState, ToolbarConfig, ChecklistItem } from "../types";
+import type { HomeAssistant, UserState, ToolbarConfig } from "../types";
 import type { SleepTrackerApi } from "../api";
 import { tokens, viewStyles, buttonStyles, cardStyles } from "../styles";
 import { formatTime, timeAgo, formatDuration } from "../utils";
@@ -9,6 +9,8 @@ import "../components/setup-prompt";
 import "../components/timeline-bar";
 import "../components/pulse-button";
 import "../components/session-card";
+import "../components/checklist-entity-item";
+import "../components/checklist-text-item";
 
 @customElement("sleep-tracker-main-view")
 export class MainView extends LitElement {
@@ -113,16 +115,6 @@ export class MainView extends LitElement {
     }
   }
 
-  private _showEntity(entityId: string) {
-    this.dispatchEvent(
-      new CustomEvent("hass-more-info", {
-        bubbles: true,
-        composed: true,
-        detail: { entityId },
-      })
-    );
-  }
-
   private _renderChecklist() {
     const checklist = this.userState.config?.checklist || [];
     if (checklist.length === 0) return nothing;
@@ -133,52 +125,20 @@ export class MainView extends LitElement {
         <div class="checklist-items">
           ${checklist.map((item) =>
             item.type === "entity"
-              ? this._renderEntityTile(item)
-              : this._renderTextItem(item)
+              ? html`
+                  <sleep-tracker-checklist-entity-item
+                    .hass=${this.hass}
+                    .entityId=${item.entity_id ?? ""}
+                    .desiredState=${item.desired_state ?? null}
+                  ></sleep-tracker-checklist-entity-item>
+                `
+              : html`
+                  <sleep-tracker-checklist-text-item
+                    .text=${item.text ?? ""}
+                  ></sleep-tracker-checklist-text-item>
+                `
           )}
         </div>
-      </div>
-    `;
-  }
-
-  private _renderEntityTile(item: ChecklistItem) {
-    const stateObj = item.entity_id
-      ? this.hass.states?.[item.entity_id]
-      : undefined;
-
-    if (!stateObj) {
-      return html`
-        <div class="entity-tile unavailable">
-          <ha-icon icon="mdi:help-circle-outline"></ha-icon>
-          <span class="tile-name">${item.entity_id}</span>
-          <span class="tile-state">Unavailable</span>
-        </div>
-      `;
-    }
-
-    const name = stateObj.attributes.friendly_name || item.entity_id;
-    const state = stateObj.state;
-    const hasDesired = item.desired_state != null;
-    const isOk = hasDesired && state === item.desired_state;
-    const isWarn = hasDesired && state !== item.desired_state;
-
-    return html`
-      <div
-        class="entity-tile ${isOk ? "ok" : ""} ${isWarn ? "warn" : ""}"
-        @click=${() => this._showEntity(item.entity_id!)}
-      >
-        <state-badge .stateObj=${stateObj}></state-badge>
-        <span class="tile-name">${name}</span>
-        <span class="tile-state">${state}</span>
-      </div>
-    `;
-  }
-
-  private _renderTextItem(item: ChecklistItem) {
-    return html`
-      <div class="text-item">
-        <ha-icon icon="mdi:circle-small"></ha-icon>
-        <span>${item.text}</span>
       </div>
     `;
   }
@@ -384,51 +344,6 @@ export class MainView extends LitElement {
         display: flex;
         flex-direction: column;
         gap: var(--ha-space-2, 8px);
-      }
-      .entity-tile {
-        display: flex;
-        align-items: center;
-        gap: var(--ha-space-3, 12px);
-        padding: var(--ha-space-3, 12px) var(--ha-space-4, 16px);
-        background: var(--card-background-color, white);
-        border-radius: var(--ha-border-radius-md, 8px);
-        cursor: pointer;
-        border: 1px solid var(--divider-color, #e0e0e0);
-        transition: background 0.15s, border-color 0.15s;
-      }
-      .entity-tile:hover {
-        background: var(--secondary-background-color, #f5f5f5);
-      }
-      .entity-tile.ok {
-        border-color: var(--sleep-color-success, #66bb6a);
-        background: rgba(102, 187, 106, 0.08);
-      }
-      .entity-tile.warn {
-        border-color: var(--sleep-color-awake, #ef5350);
-        background: rgba(239, 83, 80, 0.08);
-      }
-      .entity-tile.unavailable {
-        opacity: 0.5;
-      }
-      .tile-name {
-        flex: 1;
-        font-size: var(--ha-font-size-m, 14px);
-      }
-      .tile-state {
-        font-size: var(--ha-font-size-s, 12px);
-        color: var(--secondary-text-color);
-        text-transform: capitalize;
-      }
-      .text-item {
-        display: flex;
-        align-items: center;
-        gap: var(--ha-space-2, 8px);
-        padding: var(--ha-space-2, 8px) var(--ha-space-4, 16px);
-        color: var(--secondary-text-color);
-        font-size: var(--ha-font-size-m, 14px);
-      }
-      .text-item ha-icon {
-        --mdc-icon-size: 18px;
       }
       .unfinalized-section {
         margin-bottom: var(--ha-space-4, 16px);
