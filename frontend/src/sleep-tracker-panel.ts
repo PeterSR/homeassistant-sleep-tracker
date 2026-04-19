@@ -10,6 +10,7 @@ import "./views/night-detail-view";
 import "./views/event-review-view";
 import "./views/settings-view";
 import "./views/stats-view";
+import "./views/data-export-view";
 
 @customElement("sleep-tracker-panel")
 export class SleepTrackerPanel extends LitElement {
@@ -213,6 +214,19 @@ export class SleepTrackerPanel extends LitElement {
           @navigate=${this._onNavigate}
           @set-toolbar=${this._onSetToolbar}
         ></sleep-tracker-history-view>
+      `;
+    }
+
+    if (this._path === "/export") {
+      return html`
+        <sleep-tracker-data-export-view
+          .hass=${this.hass}
+          .api=${this._api}
+          .userState=${this._userState}
+          .narrow=${this.narrow}
+          @navigate=${this._onNavigate}
+          @set-toolbar=${this._onSetToolbar}
+        ></sleep-tracker-data-export-view>
       `;
     }
 

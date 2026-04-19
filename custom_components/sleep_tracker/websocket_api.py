@@ -10,7 +10,7 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 
-from .const import DOMAIN, EVENT_AWAKE, EVENT_FELL_ASLEEP, EVENT_STILL_AWAKE, USER_EVENT_TYPES
+from .const import DOMAIN, EVENT_AWAKE, EVENT_FELL_ASLEEP, EVENT_STILL_AWAKE
 from .models import CHECKLIST_TYPE_ENTITY, CHECKLIST_TYPE_TEXT
 
 CHECKLIST_ITEM_SCHEMA = vol.Schema(
@@ -19,6 +19,15 @@ CHECKLIST_ITEM_SCHEMA = vol.Schema(
         vol.Optional("entity_id"): str,
         vol.Optional("desired_state"): str,
         vol.Optional("text"): str,
+    }
+)
+
+CUSTOM_EVENT_SCHEMA = vol.Schema(
+    {
+        vol.Optional("id"): str,
+        vol.Optional("label"): str,
+        vol.Optional("icon"): vol.Any(str, None),
+        vol.Optional("tag"): vol.Any(str, None),
     }
 )
 
@@ -36,6 +45,8 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_pause_sleep)
     websocket_api.async_register_command(hass, ws_reopen_session)
     websocket_api.async_register_command(hass, ws_event)
+    websocket_api.async_register_command(hass, ws_custom_event)
+    websocket_api.async_register_command(hass, ws_export_data)
     websocket_api.async_register_command(hass, ws_complete_session)
     websocket_api.async_register_command(hass, ws_edit_event)
     websocket_api.async_register_command(hass, ws_delete_event)
@@ -248,6 +259,53 @@ async def ws_event(
         connection.send_error(msg["id"], "event_failed", str(err))
 
 
+# --- Custom Event ---
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "sleep_tracker/custom_event",
+        vol.Required("custom_event_id"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_custom_event(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Record a user-defined custom event in the active session."""
+    coordinator = _get_data(hass)["coordinator"]
+    user_id = connection.user.id
+
+    try:
+        session = await coordinator.async_custom_event(
+            user_id, msg["custom_event_id"], source="panel"
+        )
+        connection.send_result(msg["id"], session)
+    except ValueError as err:
+        connection.send_error(msg["id"], "event_failed", str(err))
+
+
+# --- Export Data ---
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "sleep_tracker/export_data",
+        vol.Optional("start_date"): vol.Any(str, None),
+        vol.Optional("end_date"): vol.Any(str, None),
+    }
+)
+@websocket_api.async_response
+async def ws_export_data(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Export all sessions for the current user in an optional date range."""
+    coordinator = _get_data(hass)["coordinator"]
+    user_id = connection.user.id
+    data = coordinator.export_user_data(
+        user_id, msg.get("start_date"), msg.get("end_date")
+    )
+    connection.send_result(msg["id"], data)
+
+
 # --- Complete Session ---
 
 @websocket_api.websocket_command(
@@ -361,9 +419,6 @@ async def ws_setup_user(
         vol.Optional("fall_asleep_latency_minutes"): vol.All(
             int, vol.Range(min=0, max=120)
         ),
-        vol.Optional("auto_finalize_hours"): vol.All(
-            int, vol.Range(min=1, max=48)
-        ),
         vol.Optional("skip_event_review"): bool,
         vol.Optional("skip_phase_review"): bool,
         vol.Optional("export_url"): vol.Any(str, None),
@@ -382,6 +437,7 @@ async def ws_setup_user(
         vol.Optional("sleep_goal_minutes"): vol.All(
             int, vol.Range(min=0, max=1440)
         ),
+        vol.Optional("custom_events"): [CUSTOM_EVENT_SCHEMA],
     }
 )
 @websocket_api.async_response

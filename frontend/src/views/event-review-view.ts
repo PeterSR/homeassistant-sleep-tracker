@@ -146,14 +146,20 @@ export class EventReviewView extends LitElement {
     }
   }
 
-  private _eventLabel(type: string): string {
-    switch (type) {
+  private _eventLabel(event: SleepEvent): string {
+    switch (event.event_type) {
       case "awake": return "Woke up";
       case "still_awake": return "Still awake";
       case "fell_asleep": return "Fell asleep";
       case "pause": return "Paused";
       case "resume": return "Resumed";
-      default: return type;
+      case "custom": {
+        const def = this.userState.config?.custom_events?.find(
+          (c) => c.id === event.custom_event_id
+        );
+        return def?.label ?? "Custom event";
+      }
+      default: return event.event_type;
     }
   }
 
@@ -289,7 +295,7 @@ export class EventReviewView extends LitElement {
           @click=${editable ? () => this._cycleEventType(index) : nothing}
           title=${editable ? "Click to change type" : ""}
         >
-          ${this._eventLabel(event.event_type)}
+          ${this._eventLabel(event)}
         </span>
         <span class="event-time">${formatTime(event.timestamp)}</span>
         <span class="event-source">${event.source}</span>
@@ -396,6 +402,9 @@ export class EventReviewView extends LitElement {
       }
       .event-type.resume {
         background: var(--secondary-text-color);
+      }
+      .event-type.custom {
+        background: var(--sleep-color-pulse, #ff9800);
       }
       .event-time {
         flex: 1;

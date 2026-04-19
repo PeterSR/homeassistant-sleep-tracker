@@ -126,6 +126,9 @@ export class TimelineBar extends LitElement {
       .event-marker.fell_asleep {
         background: var(--sleep-color-asleep, #42a5f5);
       }
+      .event-marker.custom {
+        background: var(--sleep-color-pulse, #ff9800);
+      }
       .now-marker {
         position: absolute;
         top: -3px;

@@ -1,8 +1,10 @@
 import { LitElement, html, css, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import type { HomeAssistant, UserState, ToolbarConfig, ChecklistItem } from "../types";
+import type { HomeAssistant, UserState, ToolbarConfig, ChecklistItem, CustomEvent as CustomEventDef } from "../types";
 import type { SleepTrackerApi } from "../api";
 import { tokens, viewStyles, formStyles, cardStyles } from "../styles";
+
+import "../components/tag-picker";
 
 @customElement("sleep-tracker-settings-view")
 export class SettingsView extends LitElement {
@@ -13,7 +15,6 @@ export class SettingsView extends LitElement {
 
   @state() private _onset = 30;
   @state() private _latency = 15;
-  @state() private _autoFinalize = 12;
   @state() private _exportUrl = "";
   @state() private _retentionDays = 90;
   @state() private _skipEventReview = false;
@@ -38,6 +39,11 @@ export class SettingsView extends LitElement {
   @state() private _wizardEntityId = "";
   @state() private _wizardDesiredState = "";
   @state() private _wizardText = "";
+  @state() private _customEvents: CustomEventDef[] = [];
+  @state() private _customWizardOpen = false;
+  @state() private _customWizardLabel = "";
+  @state() private _customWizardTag = "";
+  @state() private _customWizardIcon = "";
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -56,7 +62,6 @@ export class SettingsView extends LitElement {
     if (config) {
       this._onset = config.sleep_onset_minutes;
       this._latency = config.fall_asleep_latency_minutes;
-      this._autoFinalize = config.auto_finalize_hours;
       this._skipEventReview = config.skip_event_review;
       this._skipPhaseReview = config.skip_phase_review;
       this._exportUrl = config.export_url || "";
@@ -70,7 +75,18 @@ export class SettingsView extends LitElement {
       this._showEnvironment = config.show_environment;
       this._environmentEntities = [...(config.environment_entities || [])];
       this._sleepGoalMinutes = config.sleep_goal_minutes;
+      this._customEvents = [...(config.custom_events || [])];
     }
+  }
+
+  private _navigate(path: string) {
+    this.dispatchEvent(
+      new CustomEvent("navigate", {
+        bubbles: true,
+        composed: true,
+        detail: { path },
+      })
+    );
   }
 
   private _setToolbar() {
@@ -89,7 +105,6 @@ export class SettingsView extends LitElement {
       await this.api.updateSettings({
         sleep_onset_minutes: this._onset,
         fall_asleep_latency_minutes: this._latency,
-        auto_finalize_hours: this._autoFinalize,
         skip_event_review: this._skipEventReview,
         skip_phase_review: this._skipPhaseReview,
         export_url: this._exportUrl || null,
@@ -112,11 +127,6 @@ export class SettingsView extends LitElement {
 
   private _onLatencyChange(e: Event) {
     this._latency = parseInt((e.target as HTMLInputElement).value) || 15;
-    this._dirty = true;
-  }
-
-  private _onAutoFinalizeChange(e: Event) {
-    this._autoFinalize = parseInt((e.target as HTMLInputElement).value) || 12;
     this._dirty = true;
   }
 
@@ -198,6 +208,104 @@ export class SettingsView extends LitElement {
     await this.api.updateSettings({ available_tags: this._availableTags });
   }
 
+  private _openCustomWizard() {
+    this._customWizardLabel = "";
+    this._customWizardTag = "";
+    this._customWizardIcon = "";
+    this._customWizardOpen = true;
+  }
+
+  private _closeCustomWizard() {
+    this._customWizardOpen = false;
+  }
+
+  private async _confirmCustomEvent() {
+    const label = this._customWizardLabel.trim();
+    const tag = this._customWizardTag.trim().toLowerCase();
+    const icon = this._customWizardIcon.trim();
+    if (!label && !tag) return;
+    const event: CustomEventDef = { id: "", label: label || tag };
+    if (tag) event.tag = tag;
+    if (icon) event.icon = icon;
+    const next = [...this._customEvents, event];
+    const updates: {
+      custom_events: CustomEventDef[];
+      available_tags?: string[];
+    } = { custom_events: next };
+    if (tag && !this._availableTags.includes(tag)) {
+      updates.available_tags = [...this._availableTags, tag];
+    }
+    const config = await this.api.updateSettings(updates);
+    this._customEvents = [...(config.custom_events || [])];
+    this._availableTags = [...(config.available_tags || [])];
+    this._closeCustomWizard();
+  }
+
+  private async _removeCustomEvent(id: string) {
+    const next = this._customEvents.filter((c) => c.id !== id);
+    const config = await this.api.updateSettings({ custom_events: next });
+    this._customEvents = [...(config.custom_events || [])];
+  }
+
+  private _renderCustomEventWizard() {
+    const tag = this._customWizardTag.trim();
+    return html`
+      <div class="wizard-overlay" @click=${this._closeCustomWizard}>
+        <ha-card class="wizard-card" @click=${(e: Event) => e.stopPropagation()}>
+          <div class="wizard-header">Add custom event</div>
+          <div class="wizard-form">
+            <div class="field">
+              <label>Label</label>
+              <input
+                type="text"
+                placeholder="Defaults to tag if empty"
+                .value=${this._customWizardLabel}
+                @input=${(e: Event) => {
+                  this._customWizardLabel = (e.target as HTMLInputElement).value;
+                }}
+              />
+              <span class="range-value">Button text shown during a sleep session</span>
+            </div>
+
+            <div class="field">
+              <label>Tag (optional)</label>
+              <sleep-tracker-tag-picker
+                .availableTags=${this._availableTags}
+                .value=${this._customWizardTag}
+                @tag-changed=${(e: CustomEvent) => {
+                  this._customWizardTag = e.detail.value;
+                }}
+              ></sleep-tracker-tag-picker>
+              <span class="range-value">
+                ${tag
+                  ? `Auto-applied to the session as "${tag.toLowerCase()}" the first time the button is pressed`
+                  : "Auto-applied to the session the first time the button is pressed"}
+              </span>
+            </div>
+
+            <div class="field">
+              <ha-form
+                .hass=${this.hass}
+                .schema=${[{ name: "icon", selector: { icon: {} } }]}
+                .data=${{ icon: this._customWizardIcon }}
+                .computeLabel=${() => "Icon (optional)"}
+                @value-changed=${(e: CustomEvent) => {
+                  this._customWizardIcon = e.detail.value.icon || "";
+                }}
+              ></ha-form>
+            </div>
+
+            <button
+              class="save-btn"
+              ?disabled=${!this._customWizardLabel.trim() && !tag}
+              @click=${this._confirmCustomEvent}
+            >Add</button>
+          </div>
+        </ha-card>
+      </div>
+    `;
+  }
+
   private async _addEnvironmentEntity() {
     if (!this._newEnvEntity || this._environmentEntities.includes(this._newEnvEntity)) return;
     this._environmentEntities = [...this._environmentEntities, this._newEnvEntity];
@@ -238,7 +346,7 @@ export class SettingsView extends LitElement {
   private _phoneAutomationYaml(): string {
     const uid = this.userState.config!.user_id;
     return `alias: "Sleep Tracker - Phone awake event"
-description: "Send an awake event when phone screen turns on during sleep"
+description: "Send an awake event when phone screen turns on while you're asleep"
 triggers:
   - trigger: state
     entity_id: binary_sensor.YOUR_PHONE_interactive
@@ -247,8 +355,8 @@ triggers:
       seconds: 1
 conditions:
   - condition: state
-    entity_id: binary_sensor.sleep_tracker_${this._slug}_sleeping
-    state: "on"
+    entity_id: sensor.sleep_tracker_${this._slug}_phase
+    state: "asleep"
 actions:
   - action: sleep_tracker.event_awake
     data:
@@ -259,15 +367,15 @@ actions:
   private _buttonAutomationYaml(): string {
     const uid = this.userState.config!.user_id;
     return `alias: "Sleep Tracker - Button awake event"
-description: "Send an awake event when bedside button is pressed during sleep"
+description: "Send an awake event when bedside button is pressed while you're asleep"
 triggers:
   - trigger: state
     entity_id: YOUR_BUTTON_ENTITY
     to: "on"
 conditions:
   - condition: state
-    entity_id: binary_sensor.sleep_tracker_${this._slug}_sleeping
-    state: "on"
+    entity_id: sensor.sleep_tracker_${this._slug}_phase
+    state: "asleep"
 actions:
   - action: sleep_tracker.event_awake
     data:
@@ -431,19 +539,6 @@ data:
               <span class="range-value">${this._latency} min — assumed time to fall back asleep after a pulse</span>
             </div>
 
-            <div class="field">
-              <label>Auto-finalize after (hours)</label>
-              <input
-                type="range"
-                min="1"
-                max="48"
-                step="1"
-                .value=${String(this._autoFinalize)}
-                @input=${this._onAutoFinalizeChange}
-              />
-              <span class="range-value">${this._autoFinalize}h — unfinalized sessions are auto-finalized when you start the next sleep</span>
-            </div>
-
             <div class="toggle-row">
               <div class="toggle-info">
                 <span class="toggle-label">Skip event review</span>
@@ -566,6 +661,51 @@ data:
           </button>
 
           ${this._wizardOpen ? this._renderWizard() : nothing}
+        </ha-card>
+
+        <ha-card class="info-card">
+          <div class="card-header">Custom events</div>
+          <p class="hint">
+            User-defined buttons shown during a sleep session (including while
+            paused). If you set a tag, it's auto-applied to the session the
+            first time you press the button.
+          </p>
+
+          ${this._customEvents.length > 0
+            ? html`
+                <div class="checklist-list">
+                  ${this._customEvents.map(
+                    (custom) => html`
+                      <div class="checklist-row">
+                        <div class="checklist-row-info">
+                          <ha-icon
+                            icon=${custom.icon || "mdi:star-circle-outline"}
+                          ></ha-icon>
+                          <div class="checklist-row-detail">
+                            <span class="checklist-row-primary">${custom.label}</span>
+                            ${custom.tag
+                              ? html`<span class="checklist-row-secondary">Tag: ${custom.tag}</span>`
+                              : nothing}
+                          </div>
+                        </div>
+                        <button
+                          class="remove-btn"
+                          @click=${() => this._removeCustomEvent(custom.id)}
+                        >
+                          <ha-icon icon="mdi:close"></ha-icon>
+                        </button>
+                      </div>
+                    `
+                  )}
+                </div>
+              `
+            : nothing}
+
+          <button class="add-btn" @click=${this._openCustomWizard}>
+            <ha-icon icon="mdi:plus"></ha-icon> Add custom event
+          </button>
+
+          ${this._customWizardOpen ? this._renderCustomEventWizard() : nothing}
         </ha-card>
 
         <ha-card class="info-card">
@@ -755,6 +895,21 @@ data:
         </ha-card>
 
         <ha-card class="info-card">
+          <div class="card-header">Data</div>
+          <button
+            class="data-link-btn"
+            @click=${() => this._navigate("/export")}
+          >
+            <ha-icon icon="mdi:download-outline"></ha-icon>
+            <div class="data-link-detail">
+              <span class="data-link-label">Export data</span>
+              <span class="range-value">Download all sessions within a date range as JSON</span>
+            </div>
+            <ha-icon icon="mdi:chevron-right"></ha-icon>
+          </button>
+        </ha-card>
+
+        <ha-card class="info-card">
           <div class="card-header">Your User ID</div>
           <p class="hint">
             Use this ID in automations to send events via services:
@@ -863,10 +1018,17 @@ data:
           <div class="services-list">
             <div
               class="service-item clickable"
-              @click=${() => this._showEntity(`binary_sensor.sleep_tracker_${this._slug}_sleeping`)}
+              @click=${() => this._showEntity(`sensor.sleep_tracker_${this._slug}_phase`)}
             >
-              <code>binary_sensor.sleep_tracker_${this._slug}_sleeping</code>
-              <span class="hint">On when sleeping — use as condition in automations</span>
+              <code>sensor.sleep_tracker_${this._slug}_phase</code>
+              <span class="hint">State is <code>asleep</code> while you're actively sleeping, otherwise <code>awake</code> — use as condition in automations</span>
+            </div>
+            <div
+              class="service-item clickable"
+              @click=${() => this._showEntity(`binary_sensor.sleep_tracker_${this._slug}_in_session`)}
+            >
+              <code>binary_sensor.sleep_tracker_${this._slug}_in_session</code>
+              <span class="hint">On when a session is running (active or paused)</span>
             </div>
             <div
               class="service-item clickable"
@@ -1223,6 +1385,43 @@ data:
         flex-direction: column;
         gap: var(--ha-space-2, 8px);
         margin-top: var(--ha-space-2, 8px);
+      }
+      .data-link-btn {
+        display: flex;
+        align-items: center;
+        gap: var(--ha-space-3, 12px);
+        width: 100%;
+        padding: var(--ha-space-3, 12px) var(--ha-space-2, 8px);
+        background: none;
+        border: none;
+        border-radius: var(--ha-border-radius-md, 8px);
+        color: var(--primary-text-color);
+        font-family: inherit;
+        cursor: pointer;
+        text-align: left;
+        transition: background 0.15s;
+      }
+      .data-link-btn:hover {
+        background: var(--secondary-background-color, #f5f5f5);
+      }
+      .data-link-btn ha-icon {
+        --mdc-icon-size: 22px;
+        color: var(--secondary-text-color);
+        flex-shrink: 0;
+      }
+      .data-link-detail {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: var(--ha-space-1, 4px);
+        min-width: 0;
+      }
+      .data-link-label {
+        font-size: var(--ha-font-size-m, 14px);
+        font-weight: var(--ha-font-weight-medium, 500);
+      }
+      .data-link-detail .range-value {
+        text-align: left;
       }
     `,
   ];

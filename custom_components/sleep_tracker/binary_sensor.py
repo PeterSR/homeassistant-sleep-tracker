@@ -43,14 +43,14 @@ def create_user_binary_sensors(
     coordinator: SleepTrackerCoordinator, user_id: str
 ) -> list[BinarySensorEntity]:
     """Create binary sensor entities for a user."""
-    return [SleepingSensor(coordinator, user_id)]
+    return [InSessionSensor(coordinator, user_id)]
 
 
-class SleepingSensor(BinarySensorEntity):
-    """Binary sensor indicating whether the user is in a sleep session."""
+class InSessionSensor(BinarySensorEntity):
+    """Binary sensor indicating whether the user is in a sleep session (active or paused)."""
 
     _attr_should_poll = False
-    _attr_icon = "mdi:sleep"
+    _attr_icon = "mdi:bed"
 
     def __init__(
         self, coordinator: SleepTrackerCoordinator, user_id: str
@@ -63,9 +63,9 @@ class SleepingSensor(BinarySensorEntity):
         display_name = config.display_name if config else user_id[:8]
         slug = display_name.lower().replace(" ", "_")
 
-        self._attr_unique_id = f"sleep_tracker_{user_id}_sleeping"
-        self.entity_id = f"binary_sensor.sleep_tracker_{slug}_sleeping"
-        self._attr_name = f"Sleep Tracker {display_name} Sleeping"
+        self._attr_unique_id = f"sleep_tracker_{user_id}_in_session"
+        self.entity_id = f"binary_sensor.sleep_tracker_{slug}_in_session"
+        self._attr_name = f"Sleep Tracker {display_name} In Session"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, user_id)},
             name=f"Sleep Tracker ({display_name})",
@@ -93,4 +93,4 @@ class SleepingSensor(BinarySensorEntity):
     def _update_from_coordinator(self) -> None:
         session = self._coordinator.store.get_active_session(self._user_id)
         self._attr_is_on = session is not None
-        self._attr_icon = "mdi:sleep" if self._attr_is_on else "mdi:sleep-off"
+        self._attr_icon = "mdi:bed" if self._attr_is_on else "mdi:bed-empty"

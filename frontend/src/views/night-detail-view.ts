@@ -780,6 +780,23 @@ export class NightDetailView extends LitElement {
     `;
   }
 
+  private _eventLabel(e: any): string {
+    switch (e.event_type) {
+      case "awake": return "Woke up";
+      case "still_awake": return "Still awake";
+      case "fell_asleep": return "Fell asleep";
+      case "pause": return "Paused";
+      case "resume": return "Resumed";
+      case "custom": {
+        const def = this.userState.config?.custom_events?.find(
+          (c) => c.id === e.custom_event_id
+        );
+        return def?.label ?? "Custom event";
+      }
+      default: return e.event_type;
+    }
+  }
+
   private _renderEventList(events: any[]) {
     if (events.length === 0) {
       return html`<p class="empty-text">No events recorded.</p>`;
@@ -790,17 +807,7 @@ export class NightDetailView extends LitElement {
           (e) => html`
             <div class="event-item">
               <span class="event-type ${e.event_type}">
-                ${e.event_type === "awake"
-                  ? "Woke up"
-                  : e.event_type === "still_awake"
-                    ? "Still awake"
-                    : e.event_type === "fell_asleep"
-                      ? "Fell asleep"
-                      : e.event_type === "pause"
-                        ? "Paused"
-                        : e.event_type === "resume"
-                          ? "Resumed"
-                          : e.event_type}
+                ${this._eventLabel(e)}
               </span>
               <span class="event-time">${formatTime(e.timestamp)}</span>
               <span class="event-source">${e.source}</span>
@@ -1071,6 +1078,9 @@ export class NightDetailView extends LitElement {
       .event-type.pause,
       .event-type.resume {
         background: var(--secondary-text-color);
+      }
+      .event-type.custom {
+        background: var(--sleep-color-pulse, #ff9800);
       }
       .event-time {
         flex: 1;

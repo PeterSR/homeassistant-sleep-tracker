@@ -36,12 +36,26 @@ export interface ToolbarConfig {
   actions?: unknown;
 }
 
-export type EventType = "awake" | "still_awake" | "fell_asleep" | "pause" | "resume";
+export type EventType =
+  | "awake"
+  | "still_awake"
+  | "fell_asleep"
+  | "pause"
+  | "resume"
+  | "custom";
 
 export interface SleepEvent {
   timestamp: string;
   event_type: EventType;
   source: string;
+  custom_event_id?: string;
+}
+
+export interface CustomEvent {
+  id: string;
+  label: string;
+  icon?: string | null;
+  tag?: string | null;
 }
 
 export type PhaseState = "awake" | "asleep";
@@ -97,7 +111,6 @@ export interface UserConfig {
   display_name: string;
   sleep_onset_minutes: number;
   fall_asleep_latency_minutes: number;
-  auto_finalize_hours: number;
   skip_event_review: boolean;
   skip_phase_review: boolean;
   export_url: string | null;
@@ -112,6 +125,7 @@ export interface UserConfig {
   show_environment: boolean;
   environment_entities: string[];
   sleep_goal_minutes: number;
+  custom_events: CustomEvent[];
 }
 
 export interface UserState {

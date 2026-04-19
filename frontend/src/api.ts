@@ -1,5 +1,7 @@
 import type { ChecklistItem, EventType, HomeAssistant, SleepSession, UserConfig, UserState } from "./types";
 
+type PulseEventType = Exclude<EventType, "pause" | "resume" | "custom">;
+
 export class SleepTrackerApi {
   constructor(private hass: HomeAssistant) {}
 
@@ -75,10 +77,28 @@ export class SleepTrackerApi {
     });
   }
 
-  async event(event_type: EventType): Promise<SleepSession> {
+  async event(event_type: PulseEventType): Promise<SleepSession> {
     return this.hass.callWS({
       type: "sleep_tracker/event",
       event_type,
+    });
+  }
+
+  async customEvent(custom_event_id: string): Promise<SleepSession> {
+    return this.hass.callWS({
+      type: "sleep_tracker/custom_event",
+      custom_event_id,
+    });
+  }
+
+  async exportData(
+    start_date?: string | null,
+    end_date?: string | null
+  ): Promise<{ sessions: SleepSession[]; count: number; exported_at: string }> {
+    return this.hass.callWS({
+      type: "sleep_tracker/export_data",
+      start_date: start_date ?? null,
+      end_date: end_date ?? null,
     });
   }
 
@@ -199,7 +219,6 @@ export class SleepTrackerApi {
         UserConfig,
         | "sleep_onset_minutes"
         | "fall_asleep_latency_minutes"
-        | "auto_finalize_hours"
         | "skip_event_review"
         | "skip_phase_review"
         | "export_url"
@@ -214,6 +233,7 @@ export class SleepTrackerApi {
         | "show_environment"
         | "environment_entities"
         | "sleep_goal_minutes"
+        | "custom_events"
       >
     >
   ): Promise<UserConfig> {

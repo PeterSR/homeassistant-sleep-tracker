@@ -50,6 +50,33 @@ class ChecklistItem:
 
 
 @dataclass
+class CustomEvent:
+    """User-defined event shown as a button during active sessions."""
+
+    id: str
+    label: str
+    icon: str | None = None
+    tag: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "label": self.label,
+            "icon": self.icon,
+            "tag": self.tag,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> CustomEvent:
+        return cls(
+            id=data["id"],
+            label=data["label"],
+            icon=data.get("icon"),
+            tag=data.get("tag"),
+        )
+
+
+@dataclass
 class UserConfig:
     """Per-user sleep tracking configuration."""
 
@@ -58,7 +85,6 @@ class UserConfig:
     display_name: str = ""
     sleep_onset_minutes: int = 0
     fall_asleep_latency_minutes: int = 15
-    auto_finalize_hours: int = 12
     skip_event_review: bool = False
     skip_phase_review: bool = False
     export_url: str | None = None
@@ -73,6 +99,7 @@ class UserConfig:
     show_environment: bool = True
     environment_entities: list[str] = field(default_factory=list)
     sleep_goal_minutes: int = 0
+    custom_events: list[CustomEvent] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -81,7 +108,6 @@ class UserConfig:
             "display_name": self.display_name,
             "sleep_onset_minutes": self.sleep_onset_minutes,
             "fall_asleep_latency_minutes": self.fall_asleep_latency_minutes,
-            "auto_finalize_hours": self.auto_finalize_hours,
             "skip_event_review": self.skip_event_review,
             "skip_phase_review": self.skip_phase_review,
             "export_url": self.export_url,
@@ -96,6 +122,7 @@ class UserConfig:
             "show_environment": self.show_environment,
             "environment_entities": self.environment_entities,
             "sleep_goal_minutes": self.sleep_goal_minutes,
+            "custom_events": [e.to_dict() for e in self.custom_events],
         }
 
     @classmethod
@@ -106,7 +133,6 @@ class UserConfig:
             display_name=data.get("display_name", ""),
             sleep_onset_minutes=data.get("sleep_onset_minutes", 0),
             fall_asleep_latency_minutes=data.get("fall_asleep_latency_minutes", 15),
-            auto_finalize_hours=data.get("auto_finalize_hours", 12),
             skip_event_review=data.get("skip_event_review", False),
             skip_phase_review=data.get("skip_phase_review", False),
             export_url=data.get("export_url"),
@@ -123,6 +149,9 @@ class UserConfig:
             show_environment=data.get("show_environment", True),
             environment_entities=data.get("environment_entities", []),
             sleep_goal_minutes=data.get("sleep_goal_minutes", 0),
+            custom_events=[
+                CustomEvent.from_dict(e) for e in data.get("custom_events", [])
+            ],
         )
 
 
@@ -131,15 +160,19 @@ class SleepEvent:
     """A single raw event during a sleep session — immutable signal."""
 
     timestamp: str  # ISO 8601
-    event_type: str  # "awake", "still_awake", or "fell_asleep"
+    event_type: str  # "awake", "still_awake", "fell_asleep", "pause", "resume", "custom"
     source: str = "manual"
+    custom_event_id: str | None = None  # set when event_type == "custom"
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        data: dict[str, Any] = {
             "timestamp": self.timestamp,
             "event_type": self.event_type,
             "source": self.source,
         }
+        if self.custom_event_id is not None:
+            data["custom_event_id"] = self.custom_event_id
+        return data
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SleepEvent:
@@ -147,6 +180,7 @@ class SleepEvent:
             timestamp=data["timestamp"],
             event_type=data["event_type"],
             source=data.get("source", "manual"),
+            custom_event_id=data.get("custom_event_id"),
         )
 
 

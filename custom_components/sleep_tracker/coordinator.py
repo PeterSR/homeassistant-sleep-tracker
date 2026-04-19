@@ -23,14 +23,16 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     EVENT_AWAKE,
+    EVENT_CUSTOM,
     EVENT_FELL_ASLEEP,
     EVENT_PAUSE,
     EVENT_RESUME,
     EVENT_STILL_AWAKE,
+    PHASE_ASLEEP,
     PHASE_AWAKE,
     USER_EVENT_TYPES,
 )
-from .models import ChecklistItem, SleepEvent, SleepPhase, SleepSession
+from .models import ChecklistItem, CustomEvent, SleepEvent, SleepPhase, SleepSession
 from .phases import (
     adjust_phase_boundary,
     append_phase,
@@ -139,6 +141,11 @@ class SleepTrackerCoordinator:
                 ChecklistItem.from_dict(item) for item in kwargs["checklist"]
             ]
 
+        if "custom_events" in kwargs:
+            kwargs["custom_events"] = self._normalize_custom_events(
+                kwargs["custom_events"]
+            )
+
         for key, value in kwargs.items():
             if hasattr(config, key) and key != "user_id":
                 setattr(config, key, value)
@@ -146,6 +153,22 @@ class SleepTrackerCoordinator:
         self.store.set_user_config(config)
         self._notify_listeners(user_id)
         return config.to_dict()
+
+    def _normalize_custom_events(self, raw: list[dict]) -> list[CustomEvent]:
+        """Normalize incoming custom-event dicts: fill id, default label to tag."""
+        result: list[CustomEvent] = []
+        for entry in raw:
+            label = (entry.get("label") or "").strip()
+            tag = (entry.get("tag") or "").strip() or None
+            icon = (entry.get("icon") or "").strip() or None
+            if not label:
+                if tag:
+                    label = tag
+                else:
+                    raise ValueError("Custom event needs a label or a tag")
+            entry_id = entry.get("id") or str(uuid.uuid4())
+            result.append(CustomEvent(id=entry_id, label=label, icon=icon, tag=tag))
+        return result
 
     async def _async_create_user_entities(self, user_id: str) -> None:
         """Create sensor/binary_sensor entities for a newly set up user."""
@@ -396,6 +419,98 @@ class SleepTrackerCoordinator:
             event_type, user_id, source,
         )
         return self._session_to_dict(session)
+
+    async def async_custom_event(
+        self, user_id: str, custom_event_id: str, source: str = "manual"
+    ) -> dict:
+        """Record a custom event in the active session.
+
+        Unlike pulse events, custom events are also allowed while paused —
+        they're just user-marked timeline annotations. Stopped sessions reject.
+        If the custom event has an associated tag, it's auto-applied to the
+        session's tags (deduped).
+        """
+        config = self.store.get_user_config(user_id)
+        if config is None:
+            raise ValueError(f"User {user_id} is not set up")
+
+        custom = next(
+            (c for c in config.custom_events if c.id == custom_event_id), None
+        )
+        if custom is None:
+            raise ValueError(f"Unknown custom event: {custom_event_id}")
+
+        session = self.store.get_active_session(user_id)
+        if session is None:
+            raise ValueError(
+                f"User {user_id} has no active session — events are rejected on stopped sessions"
+            )
+
+        now = dt_util.now()
+        event = SleepEvent(
+            timestamp=now.isoformat(),
+            event_type=EVENT_CUSTOM,
+            source=source,
+            custom_event_id=custom_event_id,
+        )
+        session.events.append(event)
+
+        # Auto-apply the tag, if any (dedupe).
+        tag_applied = False
+        if custom.tag and custom.tag not in session.tags:
+            session.tags = session.tags + [custom.tag]
+            tag_applied = True
+
+        updates: dict[str, Any] = {"events": session.events}
+        if tag_applied:
+            updates["tags"] = session.tags
+        self.store.update_session(session.session_id, **updates)
+
+        # Propagate the new tag to the available_tags palette.
+        if tag_applied and custom.tag not in config.available_tags:
+            config.available_tags = config.available_tags + [custom.tag]
+            self.store.set_user_config(config)
+
+        self._notify_listeners(user_id)
+        self.hass.bus.async_fire(
+            "sleep_tracker_event",
+            {
+                "user_id": user_id,
+                "session_id": session.session_id,
+                "event_type": EVENT_CUSTOM,
+                "custom_event_id": custom_event_id,
+                "source": source,
+            },
+        )
+
+        _LOGGER.debug(
+            "Custom event %s recorded for user %s (source: %s)",
+            custom_event_id, user_id, source,
+        )
+        return self._session_to_dict(session)
+
+    def get_current_phase_state(self, user_id: str) -> str:
+        """Return the user's current phase: "awake" or "asleep".
+
+        "awake" when: no active session, session is paused, or the live
+        materialized phase is awake. "asleep" only during an active
+        (non-paused) session where the current phase is asleep.
+        """
+        session = self.store.get_active_session(user_id)
+        if session is None or session.paused_at is not None:
+            return PHASE_AWAKE
+
+        params = self._get_user_timeline_params(user_id)
+        phases = materialize_phases(
+            session.started_at,
+            None,
+            session.events,
+            **params,
+            now=dt_util.now(),
+        )
+        if phases and phases[-1].state == PHASE_ASLEEP:
+            return PHASE_ASLEEP
+        return PHASE_AWAKE
 
     # --- Session completion (event review → phase editing) ---
 
@@ -762,6 +877,34 @@ class SleepTrackerCoordinator:
         """Get past sessions for a user."""
         sessions = self.store.get_user_sessions(user_id, limit, offset)
         return [self._session_to_dict(s) for s in sessions]
+
+    def export_user_data(
+        self,
+        user_id: str,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> dict:
+        """Export all sessions for a user within an optional date range.
+
+        start_date / end_date are ISO strings compared against session.started_at
+        lexicographically (both are ISO, so lex-order == chronological). Returns
+        all completed or finalized sessions — active sessions are excluded.
+        """
+        sessions: list[SleepSession] = []
+        for s in self.store.sessions.values():
+            if s.user_id != user_id or s.is_active:
+                continue
+            if start_date and s.started_at < start_date:
+                continue
+            if end_date and s.started_at > end_date:
+                continue
+            sessions.append(s)
+        sessions.sort(key=lambda s: s.started_at)
+        return {
+            "sessions": [self._session_to_dict(s) for s in sessions],
+            "count": len(sessions),
+            "exported_at": dt_util.now().isoformat(),
+        }
 
     def get_session_detail(self, session_id: str) -> dict | None:
         """Get full session detail with computed phases and stats."""

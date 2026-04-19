@@ -17,7 +17,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from .const import DOMAIN, PHASE_ASLEEP, PHASE_AWAKE
 
 if TYPE_CHECKING:
     from .coordinator import SleepTrackerCoordinator
@@ -54,6 +54,7 @@ def create_user_sensors(
         SessionStartSensor(coordinator, user_id),
         SleepDurationSensor(coordinator, user_id),
         AwakeCountSensor(coordinator, user_id),
+        PhaseSensor(coordinator, user_id),
     ]
 
 
@@ -189,6 +190,28 @@ class SleepDurationSensor(_SleepTrackerSensorBase):
                 self._attr_native_value = stats["total_sleep_minutes"]
                 return
         self._attr_native_value = None
+
+
+class PhaseSensor(_SleepTrackerSensorBase):
+    """Enum sensor: "awake" when no session or paused; live phase state when active."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = [PHASE_AWAKE, PHASE_ASLEEP]
+    _attr_icon = "mdi:sleep"
+
+    def __init__(self, coordinator, user_id):
+        super().__init__(coordinator, user_id)
+        self._attr_unique_id = f"sleep_tracker_{user_id}_phase"
+        self.entity_id = f"sensor.sleep_tracker_{self._slug}_phase"
+        self._attr_name = f"Sleep Tracker {self._display_name} Phase"
+
+    @callback
+    def _update_from_coordinator(self) -> None:
+        state = self._coordinator.get_current_phase_state(self._user_id)
+        self._attr_native_value = state
+        self._attr_icon = (
+            "mdi:sleep" if state == PHASE_ASLEEP else "mdi:sleep-off"
+        )
 
 
 class AwakeCountSensor(_SleepTrackerSensorBase):

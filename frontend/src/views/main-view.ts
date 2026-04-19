@@ -11,6 +11,7 @@ import "../components/pulse-button";
 import "../components/session-card";
 import "../components/checklist-entity-item";
 import "../components/checklist-text-item";
+import "../components/custom-events-bar";
 
 @customElement("sleep-tracker-main-view")
 export class MainView extends LitElement {
@@ -204,6 +205,11 @@ export class MainView extends LitElement {
                     </button>
                   </div>
                 `}
+
+            <sleep-tracker-custom-events-bar
+              .api=${this.api}
+              .customEvents=${this.userState.config?.custom_events ?? []}
+            ></sleep-tracker-custom-events-bar>
 
             <div class="stop-section">
               <button class="big-button stop" @click=${this._stopSleep}>
