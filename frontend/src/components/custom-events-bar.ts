@@ -2,7 +2,7 @@ import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { CustomEvent as CustomEventDef } from "../types";
 import type { SleepTrackerApi } from "../api";
-import { tokens } from "../styles";
+import { tokens, buttonStyles } from "../styles";
 
 @customElement("sleep-tracker-custom-events-bar")
 export class CustomEventsBar extends LitElement {
@@ -37,19 +37,17 @@ export class CustomEventsBar extends LitElement {
   render() {
     if (!this.customEvents?.length) return nothing;
     return html`
-      <div class="custom-events">
+      <div class="pulse-buttons custom-wrap">
         ${this.customEvents.map(
           (custom) => html`
             <button
-              class="custom-btn ${this._flashId === custom.id ? "flashed" : ""}"
+              class="pulse-btn ${this._flashId === custom.id ? "flashed" : ""}"
               ?disabled=${this._busyId !== null}
               @click=${() => this._fire(custom)}
               title=${custom.tag ? `Applies tag: ${custom.tag}` : ""}
             >
-              ${custom.icon
-                ? html`<ha-icon icon=${custom.icon}></ha-icon>`
-                : nothing}
-              <span>${custom.label}</span>
+              <ha-icon icon=${custom.icon || "mdi:star-circle-outline"}></ha-icon>
+              ${custom.label}
             </button>
           `
         )}
@@ -59,42 +57,31 @@ export class CustomEventsBar extends LitElement {
 
   static styles = [
     tokens,
+    buttonStyles,
     css`
-      .custom-events {
-        display: flex;
+      .custom-wrap {
         flex-wrap: wrap;
-        gap: var(--ha-space-2, 8px);
-        justify-content: center;
-        margin: var(--ha-space-3, 12px) 0;
+        margin-top: var(--ha-space-2, 8px);
       }
-      .custom-btn {
-        display: inline-flex;
+      .pulse-btn {
+        display: flex;
         align-items: center;
+        justify-content: center;
         gap: var(--ha-space-2, 8px);
-        padding: var(--ha-space-2, 8px) var(--ha-space-4, 16px);
-        background: var(--card-background-color, white);
-        color: var(--primary-text-color);
-        border: 1px solid var(--divider-color, #e0e0e0);
-        border-radius: var(--ha-border-radius-md, 8px);
-        font-size: var(--ha-font-size-m, 14px);
-        font-family: inherit;
-        cursor: pointer;
-        transition: background 0.15s, border-color 0.15s;
+        min-width: 0;
       }
-      .custom-btn:hover {
-        border-color: var(--primary-color, #03a9f4);
-      }
-      .custom-btn:disabled {
+      .pulse-btn:disabled {
         opacity: 0.5;
         cursor: not-allowed;
       }
-      .custom-btn.flashed {
+      .pulse-btn.flashed {
         background: var(--sleep-color-success, #66bb6a);
         color: white;
         border-color: var(--sleep-color-success, #66bb6a);
+        transition: background 0.15s;
       }
       ha-icon {
-        --mdc-icon-size: 18px;
+        --mdc-icon-size: 20px;
       }
     `,
   ];

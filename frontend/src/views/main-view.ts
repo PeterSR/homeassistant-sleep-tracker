@@ -187,6 +187,17 @@ export class MainView extends LitElement {
               : nothing}
 
             ${paused
+              ? nothing
+              : html`
+                  <sleep-tracker-pulse-button .api=${this.api}></sleep-tracker-pulse-button>
+                `}
+
+            <sleep-tracker-custom-events-bar
+              .api=${this.api}
+              .customEvents=${this.userState.config?.custom_events ?? []}
+            ></sleep-tracker-custom-events-bar>
+
+            ${paused
               ? html`
                   <div class="resume-section">
                     <button class="big-button start" @click=${this._startSleep}>
@@ -196,8 +207,6 @@ export class MainView extends LitElement {
                   </div>
                 `
               : html`
-                  <sleep-tracker-pulse-button .api=${this.api}></sleep-tracker-pulse-button>
-
                   <div class="pause-section">
                     <button class="big-button pause" @click=${this._pauseSleep}>
                       <ha-icon icon="mdi:pause"></ha-icon>
@@ -205,11 +214,6 @@ export class MainView extends LitElement {
                     </button>
                   </div>
                 `}
-
-            <sleep-tracker-custom-events-bar
-              .api=${this.api}
-              .customEvents=${this.userState.config?.custom_events ?? []}
-            ></sleep-tracker-custom-events-bar>
 
             <div class="stop-section">
               <button class="big-button stop" @click=${this._stopSleep}>
