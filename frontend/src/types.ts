@@ -111,6 +111,7 @@ export interface UserConfig {
   display_name: string;
   sleep_onset_minutes: number;
   fall_asleep_latency_minutes: number;
+  awakening_grace_minutes: number;
   skip_event_review: boolean;
   skip_phase_review: boolean;
   export_url: string | null;

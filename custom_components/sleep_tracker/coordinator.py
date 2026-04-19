@@ -383,14 +383,24 @@ class SleepTrackerCoordinator:
 
         now = dt_util.now()
 
-        # Auto-demote awake -> still_awake when currently awake
+        # Auto-demote awake -> still_awake when currently awake OR within the
+        # awakening-grace window after the latency-based fall-asleep.
         if event_type == EVENT_AWAKE:
             params = self._get_user_timeline_params(user_id)
+            config = self.store.get_user_config(user_id)
+            grace = config.awakening_grace_minutes if config else 0
             phases = materialize_phases(
                 session.started_at, None, session.events, **params, now=now
             )
-            if phases and phases[-1].state == PHASE_AWAKE:
-                event_type = EVENT_STILL_AWAKE
+            if phases:
+                last = phases[-1]
+                if last.state == PHASE_AWAKE:
+                    event_type = EVENT_STILL_AWAKE
+                elif grace > 0:
+                    asleep_at = datetime.fromisoformat(last.start)
+                    if (now - asleep_at) <= timedelta(minutes=grace):
+                        event_type = EVENT_STILL_AWAKE
+            if event_type == EVENT_STILL_AWAKE:
                 _LOGGER.debug(
                     "Auto-demoted awake event to still_awake for user %s", user_id
                 )

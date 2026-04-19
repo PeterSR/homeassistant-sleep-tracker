@@ -85,6 +85,7 @@ class UserConfig:
     display_name: str = ""
     sleep_onset_minutes: int = 0
     fall_asleep_latency_minutes: int = 15
+    awakening_grace_minutes: int = 0
     skip_event_review: bool = False
     skip_phase_review: bool = False
     export_url: str | None = None
@@ -108,6 +109,7 @@ class UserConfig:
             "display_name": self.display_name,
             "sleep_onset_minutes": self.sleep_onset_minutes,
             "fall_asleep_latency_minutes": self.fall_asleep_latency_minutes,
+            "awakening_grace_minutes": self.awakening_grace_minutes,
             "skip_event_review": self.skip_event_review,
             "skip_phase_review": self.skip_phase_review,
             "export_url": self.export_url,
@@ -133,6 +135,7 @@ class UserConfig:
             display_name=data.get("display_name", ""),
             sleep_onset_minutes=data.get("sleep_onset_minutes", 0),
             fall_asleep_latency_minutes=data.get("fall_asleep_latency_minutes", 15),
+            awakening_grace_minutes=data.get("awakening_grace_minutes", 0),
             skip_event_review=data.get("skip_event_review", False),
             skip_phase_review=data.get("skip_phase_review", False),
             export_url=data.get("export_url"),

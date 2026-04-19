@@ -15,6 +15,7 @@ export class SettingsView extends LitElement {
 
   @state() private _onset = 30;
   @state() private _latency = 15;
+  @state() private _awakeningGrace = 0;
   @state() private _exportUrl = "";
   @state() private _retentionDays = 90;
   @state() private _skipEventReview = false;
@@ -62,6 +63,7 @@ export class SettingsView extends LitElement {
     if (config) {
       this._onset = config.sleep_onset_minutes;
       this._latency = config.fall_asleep_latency_minutes;
+      this._awakeningGrace = config.awakening_grace_minutes;
       this._skipEventReview = config.skip_event_review;
       this._skipPhaseReview = config.skip_phase_review;
       this._exportUrl = config.export_url || "";
@@ -105,6 +107,7 @@ export class SettingsView extends LitElement {
       await this.api.updateSettings({
         sleep_onset_minutes: this._onset,
         fall_asleep_latency_minutes: this._latency,
+        awakening_grace_minutes: this._awakeningGrace,
         skip_event_review: this._skipEventReview,
         skip_phase_review: this._skipPhaseReview,
         export_url: this._exportUrl || null,
@@ -127,6 +130,11 @@ export class SettingsView extends LitElement {
 
   private _onLatencyChange(e: Event) {
     this._latency = parseInt((e.target as HTMLInputElement).value) || 15;
+    this._dirty = true;
+  }
+
+  private _onAwakeningGraceChange(e: Event) {
+    this._awakeningGrace = parseInt((e.target as HTMLInputElement).value) || 0;
     this._dirty = true;
   }
 
@@ -537,6 +545,23 @@ data:
                 @input=${this._onLatencyChange}
               />
               <span class="range-value">${this._latency} min — assumed time to fall back asleep after a pulse</span>
+            </div>
+
+            <div class="field">
+              <label>Awakening grace (minutes)</label>
+              <input
+                type="range"
+                min="0"
+                max="180"
+                step="5"
+                .value=${String(this._awakeningGrace)}
+                @input=${this._onAwakeningGraceChange}
+              />
+              <span class="range-value">
+                ${this._awakeningGrace === 0
+                  ? "0 min — any pulse after the latency window counts as a new awakening (default)"
+                  : `${this._awakeningGrace} min — a pulse up to ${this._awakeningGrace} min after the latency window is treated as "still awake" instead of a new awakening. High values may swallow short real awakenings.`}
+              </span>
             </div>
 
             <div class="toggle-row">

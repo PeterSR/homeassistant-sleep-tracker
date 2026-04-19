@@ -219,6 +219,7 @@ export class SleepTrackerApi {
         UserConfig,
         | "sleep_onset_minutes"
         | "fall_asleep_latency_minutes"
+        | "awakening_grace_minutes"
         | "skip_event_review"
         | "skip_phase_review"
         | "export_url"

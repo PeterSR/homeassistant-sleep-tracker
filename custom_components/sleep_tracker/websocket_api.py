@@ -419,6 +419,9 @@ async def ws_setup_user(
         vol.Optional("fall_asleep_latency_minutes"): vol.All(
             int, vol.Range(min=0, max=120)
         ),
+        vol.Optional("awakening_grace_minutes"): vol.All(
+            int, vol.Range(min=0, max=180)
+        ),
         vol.Optional("skip_event_review"): bool,
         vol.Optional("skip_phase_review"): bool,
         vol.Optional("export_url"): vol.Any(str, None),
