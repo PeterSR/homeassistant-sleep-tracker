@@ -190,7 +190,11 @@ class SleepTrackerCoordinator:
     # --- Session management ---
 
     async def async_start_sleep(
-        self, user_id: str, source: str = "manual"
+        self,
+        user_id: str,
+        source: str = "manual",
+        automation_id: str | None = None,
+        automation_trigger_id: str | None = None,
     ) -> dict:
         """Start a new sleep session, or resume a paused one.
 
@@ -205,7 +209,11 @@ class SleepTrackerCoordinator:
         active = self.store.get_active_session(user_id)
         if active is not None:
             if active.paused_at is not None:
-                return await self._async_resume_sleep(user_id, active, source)
+                return await self._async_resume_sleep(
+                    user_id, active, source,
+                    automation_id=automation_id,
+                    automation_trigger_id=automation_trigger_id,
+                )
             raise ValueError(
                 f"User {user_id} already has an active session: {active.session_id}"
             )
@@ -234,13 +242,20 @@ class SleepTrackerCoordinator:
         return self._session_to_dict(session)
 
     async def _async_resume_sleep(
-        self, user_id: str, session: SleepSession, source: str
+        self,
+        user_id: str,
+        session: SleepSession,
+        source: str,
+        automation_id: str | None = None,
+        automation_trigger_id: str | None = None,
     ) -> dict:
         """Resume a paused session. Records a resume event and clears paused_at."""
         event = SleepEvent(
             timestamp=dt_util.now().isoformat(),
             event_type=EVENT_RESUME,
             source=source,
+            automation_id=automation_id,
+            automation_trigger_id=automation_trigger_id,
         )
         session.events.append(event)
         self.store.update_session(
@@ -289,7 +304,11 @@ class SleepTrackerCoordinator:
         return self._session_to_dict(session)
 
     async def async_pause_sleep(
-        self, user_id: str, source: str = "manual"
+        self,
+        user_id: str,
+        source: str = "manual",
+        automation_id: str | None = None,
+        automation_trigger_id: str | None = None,
     ) -> dict:
         """Pause the active session — marks user as awake until resumed."""
         session = self.store.get_active_session(user_id)
@@ -303,6 +322,8 @@ class SleepTrackerCoordinator:
             timestamp=now.isoformat(),
             event_type=EVENT_PAUSE,
             source=source,
+            automation_id=automation_id,
+            automation_trigger_id=automation_trigger_id,
         )
         session.events.append(event)
         self.store.update_session(
@@ -359,7 +380,12 @@ class SleepTrackerCoordinator:
         return self._session_to_dict(session)
 
     async def async_event(
-        self, user_id: str, event_type: str, source: str = "manual"
+        self,
+        user_id: str,
+        event_type: str,
+        source: str = "manual",
+        automation_id: str | None = None,
+        automation_trigger_id: str | None = None,
     ) -> dict:
         """Record an event in the active session.
 
@@ -409,6 +435,8 @@ class SleepTrackerCoordinator:
             timestamp=now.isoformat(),
             event_type=event_type,
             source=source,
+            automation_id=automation_id,
+            automation_trigger_id=automation_trigger_id,
         )
         session.events.append(event)
         self.store.update_session(session.session_id, events=session.events)
@@ -431,7 +459,12 @@ class SleepTrackerCoordinator:
         return self._session_to_dict(session)
 
     async def async_custom_event(
-        self, user_id: str, custom_event_id: str, source: str = "manual"
+        self,
+        user_id: str,
+        custom_event_id: str,
+        source: str = "manual",
+        automation_id: str | None = None,
+        automation_trigger_id: str | None = None,
     ) -> dict:
         """Record a custom event in the active session.
 
@@ -462,6 +495,8 @@ class SleepTrackerCoordinator:
             event_type=EVENT_CUSTOM,
             source=source,
             custom_event_id=custom_event_id,
+            automation_id=automation_id,
+            automation_trigger_id=automation_trigger_id,
         )
         session.events.append(event)
 

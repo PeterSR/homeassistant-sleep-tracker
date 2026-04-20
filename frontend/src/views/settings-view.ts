@@ -396,7 +396,10 @@ actions:
     return `action: sleep_tracker.event_awake
 data:
   user_id: "${uid}"
-  source: automation`;
+  source: automation
+  # Optional — auto-detected via HA traces; pass explicitly for stability:
+  automation_id: "{{ this.entity_id }}"
+  automation_trigger_id: "{{ trigger.id }}"`;
   }
 
   private get _slug(): string {
@@ -951,6 +954,18 @@ data:
         <ha-card class="info-card">
           <div class="card-header">Automation Examples</div>
 
+          <div class="automation-note">
+            <ha-icon icon="mdi:information-outline"></ha-icon>
+            <span>
+              When an event is triggered by an automation, the calling automation and
+              <code>trigger.id</code> are auto-detected via HA's trace system and shown in
+              the review/night pages. The auto-detection uses an internal HA API that
+              could change in a future release — for forward compatibility, pass
+              <code>automation_id</code> and <code>automation_trigger_id</code>
+              explicitly as shown below.
+            </span>
+          </div>
+
           <div class="example">
             <div class="example-header">
               <div>
@@ -1172,6 +1187,31 @@ data:
       }
       .copy-btn:hover {
         background: var(--secondary-background-color, #f5f5f5);
+      }
+      .automation-note {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--ha-space-2, 8px);
+        padding: var(--ha-space-3, 12px);
+        margin-bottom: var(--ha-space-4, 16px);
+        background: #fff8e1;
+        border-left: 3px solid #ffa726;
+        border-radius: var(--ha-border-radius-sm, 4px);
+        font-size: var(--ha-font-size-s, 12px);
+        color: var(--primary-text-color);
+      }
+      .automation-note ha-icon {
+        color: #ffa726;
+        --mdc-icon-size: 18px;
+        flex-shrink: 0;
+        margin-top: 1px;
+      }
+      .automation-note code {
+        font-family: "Roboto Mono", "SFMono-Regular", monospace;
+        font-size: 11px;
+        background: rgba(0, 0, 0, 0.05);
+        padding: 1px 4px;
+        border-radius: 3px;
       }
       .example {
         margin-bottom: var(--ha-space-2, 8px);

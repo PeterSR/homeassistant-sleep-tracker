@@ -7,6 +7,7 @@ import { formatDate, formatTime } from "../utils";
 
 import "../components/timeline-bar";
 import "../components/session-meta";
+import "../components/automation-info-modal";
 
 const CYCLE_TYPES = ["awake", "still_awake", "fell_asleep"] as const;
 
@@ -22,6 +23,7 @@ export class EventReviewView extends LitElement {
   @state() private _loading = true;
   @state() private _busy = false;
   @state() private _confirmDelete = false;
+  @state() private _automationModal: SleepEvent | null = null;
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -257,6 +259,17 @@ export class EventReviewView extends LitElement {
           </button>
         </div>
 
+        ${this._automationModal
+          ? html`
+              <sleep-tracker-automation-info-modal
+                .hass=${this.hass}
+                .automationId=${this._automationModal.automation_id ?? null}
+                .automationTriggerId=${this._automationModal.automation_trigger_id ?? null}
+                @close=${() => { this._automationModal = null; }}
+              ></sleep-tracker-automation-info-modal>
+            `
+          : nothing}
+
         ${this._confirmDelete
           ? html`
               <div class="confirm-overlay" @click=${() => { this._confirmDelete = false; }}>
@@ -288,6 +301,8 @@ export class EventReviewView extends LitElement {
 
   private _renderEvent(event: SleepEvent, index: number) {
     const editable = this._isEditable(event);
+    const hasAutomation =
+      !!event.automation_id || !!event.automation_trigger_id;
     return html`
       <div class="event-item">
         <span
@@ -298,7 +313,18 @@ export class EventReviewView extends LitElement {
           ${this._eventLabel(event)}
         </span>
         <span class="event-time">${formatTime(event.timestamp)}</span>
-        <span class="event-source">${event.source}</span>
+        ${hasAutomation
+          ? html`
+              <button
+                class="automation-chip ${event.automation_trigger_id === "ERROR" ? "err" : ""}"
+                @click=${() => { this._automationModal = event; }}
+                title="Show automation info"
+              >
+                <ha-icon icon="mdi:robot-outline"></ha-icon>
+                automation
+              </button>
+            `
+          : html`<span class="event-source">${event.source}</span>`}
         <button
           class="event-delete"
           ?disabled=${this._busy}
@@ -413,6 +439,27 @@ export class EventReviewView extends LitElement {
       .event-source {
         font-size: var(--ha-font-size-s, 12px);
         color: var(--secondary-text-color);
+      }
+      .automation-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 8px;
+        background: var(--secondary-background-color, #f5f5f5);
+        color: var(--primary-text-color);
+        border: 1px solid var(--divider-color, #e0e0e0);
+        border-radius: var(--ha-border-radius-sm, 4px);
+        font-size: var(--ha-font-size-s, 12px);
+        cursor: pointer;
+        font-family: inherit;
+        --mdc-icon-size: 14px;
+      }
+      .automation-chip:hover {
+        background: var(--divider-color, #e0e0e0);
+      }
+      .automation-chip.err {
+        color: var(--sleep-color-awake, #ef5350);
+        border-color: var(--sleep-color-awake, #ef5350);
       }
       .event-delete {
         display: flex;

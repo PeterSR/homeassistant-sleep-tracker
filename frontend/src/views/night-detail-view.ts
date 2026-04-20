@@ -8,6 +8,7 @@ import { formatDate, formatTime, formatDuration } from "../utils";
 import "../components/timeline-bar";
 import "../components/night-stats";
 import "../components/session-meta";
+import "../components/automation-info-modal";
 
 type BoundaryEdit = { afterIndex: number };
 
@@ -29,6 +30,7 @@ export class NightDetailView extends LitElement {
   @state() private _confirmDelete = false;
   @state() private _confirmResume = false;
   @state() private _appendingPhase: { state: "awake" | "asleep"; endTime: string } | null = null;
+  @state() private _automationModal: any = null;
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -803,18 +805,40 @@ export class NightDetailView extends LitElement {
     }
     return html`
       <div class="event-list">
-        ${events.map(
-          (e) => html`
+        ${events.map((e) => {
+          const hasAutomation = !!e.automation_id || !!e.automation_trigger_id;
+          return html`
             <div class="event-item">
               <span class="event-type ${e.event_type}">
                 ${this._eventLabel(e)}
               </span>
               <span class="event-time">${formatTime(e.timestamp)}</span>
-              <span class="event-source">${e.source}</span>
+              ${hasAutomation
+                ? html`
+                    <button
+                      class="automation-chip ${e.automation_trigger_id === "ERROR" ? "err" : ""}"
+                      @click=${() => { this._automationModal = e; }}
+                      title="Show automation info"
+                    >
+                      <ha-icon icon="mdi:robot-outline"></ha-icon>
+                      automation
+                    </button>
+                  `
+                : html`<span class="event-source">${e.source}</span>`}
             </div>
-          `
-        )}
+          `;
+        })}
       </div>
+      ${this._automationModal
+        ? html`
+            <sleep-tracker-automation-info-modal
+              .hass=${this.hass}
+              .automationId=${this._automationModal.automation_id ?? null}
+              .automationTriggerId=${this._automationModal.automation_trigger_id ?? null}
+              @close=${() => { this._automationModal = null; }}
+            ></sleep-tracker-automation-info-modal>
+          `
+        : nothing}
     `;
   }
 
@@ -1087,6 +1111,27 @@ export class NightDetailView extends LitElement {
       }
       .event-source {
         color: var(--secondary-text-color);
+      }
+      .automation-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 8px;
+        background: var(--secondary-background-color, #f5f5f5);
+        color: var(--primary-text-color);
+        border: 1px solid var(--divider-color, #e0e0e0);
+        border-radius: var(--ha-border-radius-sm, 4px);
+        font-size: var(--ha-font-size-s, 12px);
+        cursor: pointer;
+        font-family: inherit;
+        --mdc-icon-size: 14px;
+      }
+      .automation-chip:hover {
+        background: var(--divider-color, #e0e0e0);
+      }
+      .automation-chip.err {
+        color: var(--sleep-color-awake, #ef5350);
+        border-color: var(--sleep-color-awake, #ef5350);
       }
 
       .empty-text {

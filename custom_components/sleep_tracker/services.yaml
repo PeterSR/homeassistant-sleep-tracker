@@ -15,6 +15,18 @@ start_sleep:
       default: automation
       selector:
         text:
+    automation_id:
+      name: Automation ID
+      description: Optional. The calling automation's entity_id, typically `{{ this.entity_id }}`. Stored on the resume event if this call resumes a paused session.
+      required: false
+      selector:
+        text:
+    automation_trigger_id:
+      name: Automation trigger ID
+      description: Optional. The id of the matched trigger within the automation, typically `{{ trigger.id }}`.
+      required: false
+      selector:
+        text:
 
 stop_sleep:
   name: Stop sleep session
@@ -49,6 +61,18 @@ pause_sleep:
       description: What triggered this.
       required: false
       default: automation
+      selector:
+        text:
+    automation_id:
+      name: Automation ID
+      description: Optional. The calling automation's entity_id, typically `{{ this.entity_id }}`. Stored on the pause event.
+      required: false
+      selector:
+        text:
+    automation_trigger_id:
+      name: Automation trigger ID
+      description: Optional. The id of the matched trigger within the automation, typically `{{ trigger.id }}`.
+      required: false
       selector:
         text:
 
@@ -86,6 +110,18 @@ event_awake:
       default: automation
       selector:
         text:
+    automation_id:
+      name: Automation ID
+      description: Optional. The calling automation's entity_id, typically `{{ this.entity_id }}`. Stored on the event.
+      required: false
+      selector:
+        text:
+    automation_trigger_id:
+      name: Automation trigger ID
+      description: Optional. The id of the matched trigger within the automation, typically `{{ trigger.id }}`.
+      required: false
+      selector:
+        text:
 
 event_still_awake:
   name: Event - Still Awake
@@ -104,6 +140,18 @@ event_still_awake:
       default: automation
       selector:
         text:
+    automation_id:
+      name: Automation ID
+      description: Optional. The calling automation's entity_id, typically `{{ this.entity_id }}`. Stored on the event.
+      required: false
+      selector:
+        text:
+    automation_trigger_id:
+      name: Automation trigger ID
+      description: Optional. The id of the matched trigger within the automation, typically `{{ trigger.id }}`.
+      required: false
+      selector:
+        text:
 
 event_fell_asleep:
   name: Event - Fell Asleep
@@ -120,6 +168,18 @@ event_fell_asleep:
       description: What detected the sleep onset (e.g., "sleep_ring").
       required: false
       default: automation
+      selector:
+        text:
+    automation_id:
+      name: Automation ID
+      description: Optional. The calling automation's entity_id, typically `{{ this.entity_id }}`. Stored on the event.
+      required: false
+      selector:
+        text:
+    automation_trigger_id:
+      name: Automation trigger ID
+      description: Optional. The id of the matched trigger within the automation, typically `{{ trigger.id }}`.
+      required: false
       selector:
         text:
 

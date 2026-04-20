@@ -49,6 +49,8 @@ export interface SleepEvent {
   event_type: EventType;
   source: string;
   custom_event_id?: string;
+  automation_id?: string;
+  automation_trigger_id?: string;
 }
 
 export interface CustomEvent {

@@ -166,6 +166,8 @@ class SleepEvent:
     event_type: str  # "awake", "still_awake", "fell_asleep", "pause", "resume", "custom"
     source: str = "manual"
     custom_event_id: str | None = None  # set when event_type == "custom"
+    automation_id: str | None = None  # e.g. automation.bedside_button
+    automation_trigger_id: str | None = None  # trigger.id within the automation
 
     def to_dict(self) -> dict[str, Any]:
         data: dict[str, Any] = {
@@ -175,6 +177,10 @@ class SleepEvent:
         }
         if self.custom_event_id is not None:
             data["custom_event_id"] = self.custom_event_id
+        if self.automation_id is not None:
+            data["automation_id"] = self.automation_id
+        if self.automation_trigger_id is not None:
+            data["automation_trigger_id"] = self.automation_trigger_id
         return data
 
     @classmethod
@@ -184,6 +190,8 @@ class SleepEvent:
             event_type=data["event_type"],
             source=data.get("source", "manual"),
             custom_event_id=data.get("custom_event_id"),
+            automation_id=data.get("automation_id"),
+            automation_trigger_id=data.get("automation_trigger_id"),
         )
 
 

@@ -8,6 +8,7 @@ import voluptuous as vol
 
 from homeassistant.core import HomeAssistant, ServiceCall
 
+from .automation_meta import resolve_automation_metadata
 from .const import DOMAIN, EVENT_AWAKE, EVENT_FELL_ASLEEP, EVENT_STILL_AWAKE
 
 _LOGGER = logging.getLogger(__name__)
@@ -25,8 +26,33 @@ SCHEMA_USER_AND_SOURCE = vol.Schema(
     {
         vol.Required("user_id"): str,
         vol.Optional("source", default="automation"): str,
+        vol.Optional("automation_id"): vol.Any(str, None),
+        vol.Optional("automation_trigger_id"): vol.Any(str, None),
     }
 )
+
+
+async def _automation_kwargs(
+    hass: HomeAssistant, call: ServiceCall
+) -> dict[str, str | None]:
+    """Resolve automation metadata for a service call.
+
+    Explicit fields on the service call win. Any field left unset is
+    auto-detected from HA's trace component (best-effort).
+    """
+    auto_id, auto_trigger = await resolve_automation_metadata(hass, call.context)
+    return {
+        "automation_id": (
+            call.data["automation_id"]
+            if "automation_id" in call.data
+            else auto_id
+        ),
+        "automation_trigger_id": (
+            call.data["automation_trigger_id"]
+            if "automation_trigger_id" in call.data
+            else auto_trigger
+        ),
+    }
 
 SCHEMA_SESSION_ID = vol.Schema(
     {
@@ -58,6 +84,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         await coordinator.async_start_sleep(
             user_id=call.data["user_id"],
             source=call.data.get("source", "automation"),
+            **await _automation_kwargs(hass, call),
         )
 
     async def handle_stop_sleep(call: ServiceCall) -> None:
@@ -72,6 +99,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         await coordinator.async_pause_sleep(
             user_id=call.data["user_id"],
             source=call.data.get("source", "automation"),
+            **await _automation_kwargs(hass, call),
         )
 
     async def handle_reopen_session(call: ServiceCall) -> None:
@@ -87,6 +115,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             user_id=call.data["user_id"],
             event_type=EVENT_AWAKE,
             source=call.data.get("source", "automation"),
+            **await _automation_kwargs(hass, call),
         )
 
     async def handle_event_still_awake(call: ServiceCall) -> None:
@@ -95,6 +124,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             user_id=call.data["user_id"],
             event_type=EVENT_STILL_AWAKE,
             source=call.data.get("source", "automation"),
+            **await _automation_kwargs(hass, call),
         )
 
     async def handle_event_fell_asleep(call: ServiceCall) -> None:
@@ -103,6 +133,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             user_id=call.data["user_id"],
             event_type=EVENT_FELL_ASLEEP,
             source=call.data.get("source", "automation"),
+            **await _automation_kwargs(hass, call),
         )
 
     async def handle_export_session(call: ServiceCall) -> None:
