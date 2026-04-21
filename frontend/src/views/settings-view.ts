@@ -34,17 +34,21 @@ export class SettingsView extends LitElement {
   @state() private _tagUsage: Record<string, number> = {};
   @state() private _tagUsageLoaded = false;
   @state() private _newTagInput = "";
-  @state() private _newEnvEntity = "";
   @state() private _wizardOpen = false;
   @state() private _wizardStep: "type" | "entity" | "text" = "type";
   @state() private _wizardEntityId = "";
   @state() private _wizardDesiredState = "";
   @state() private _wizardText = "";
+  @state() private _wizardEditIndex: number | null = null;
   @state() private _customEvents: CustomEventDef[] = [];
   @state() private _customWizardOpen = false;
   @state() private _customWizardLabel = "";
   @state() private _customWizardTag = "";
   @state() private _customWizardIcon = "";
+  @state() private _customWizardEditId: string | null = null;
+  @state() private _envWizardOpen = false;
+  @state() private _envWizardEntityId = "";
+  @state() private _envWizardEditIndex: number | null = null;
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -148,16 +152,30 @@ export class SettingsView extends LitElement {
     this._dirty = true;
   }
 
-  private _openWizard() {
-    this._wizardStep = "type";
+  private _openWizard(editIndex?: number) {
     this._wizardEntityId = "";
     this._wizardDesiredState = "";
     this._wizardText = "";
+    this._wizardEditIndex = editIndex ?? null;
+    if (editIndex != null) {
+      const item = this._checklist[editIndex];
+      if (item.type === "entity") {
+        this._wizardStep = "entity";
+        this._wizardEntityId = item.entity_id || "";
+        this._wizardDesiredState = item.desired_state || "";
+      } else {
+        this._wizardStep = "text";
+        this._wizardText = item.text || "";
+      }
+    } else {
+      this._wizardStep = "type";
+    }
     this._wizardOpen = true;
   }
 
   private _closeWizard() {
     this._wizardOpen = false;
+    this._wizardEditIndex = null;
   }
 
   private async _saveChecklist() {
@@ -165,20 +183,19 @@ export class SettingsView extends LitElement {
   }
 
   private async _wizardConfirm() {
+    let item: ChecklistItem | null = null;
     if (this._wizardStep === "entity" && this._wizardEntityId) {
-      const item: ChecklistItem = {
-        type: "entity",
-        entity_id: this._wizardEntityId,
-      };
-      if (this._wizardDesiredState) {
-        item.desired_state = this._wizardDesiredState;
-      }
-      this._checklist = [...this._checklist, item];
+      item = { type: "entity", entity_id: this._wizardEntityId };
+      if (this._wizardDesiredState) item.desired_state = this._wizardDesiredState;
     } else if (this._wizardStep === "text" && this._wizardText) {
-      this._checklist = [
-        ...this._checklist,
-        { type: "text", text: this._wizardText },
-      ];
+      item = { type: "text", text: this._wizardText };
+    }
+    if (!item) return;
+    if (this._wizardEditIndex != null) {
+      const idx = this._wizardEditIndex;
+      this._checklist = this._checklist.map((c, i) => (i === idx ? item! : c));
+    } else {
+      this._checklist = [...this._checklist, item];
     }
     this._closeWizard();
     await this._saveChecklist();
@@ -216,15 +233,24 @@ export class SettingsView extends LitElement {
     await this.api.updateSettings({ available_tags: this._availableTags });
   }
 
-  private _openCustomWizard() {
-    this._customWizardLabel = "";
-    this._customWizardTag = "";
-    this._customWizardIcon = "";
+  private _openCustomWizard(editId?: string) {
+    this._customWizardEditId = editId ?? null;
+    if (editId) {
+      const existing = this._customEvents.find((c) => c.id === editId);
+      this._customWizardLabel = existing?.label ?? "";
+      this._customWizardTag = existing?.tag ?? "";
+      this._customWizardIcon = existing?.icon ?? "";
+    } else {
+      this._customWizardLabel = "";
+      this._customWizardTag = "";
+      this._customWizardIcon = "";
+    }
     this._customWizardOpen = true;
   }
 
   private _closeCustomWizard() {
     this._customWizardOpen = false;
+    this._customWizardEditId = null;
   }
 
   private async _confirmCustomEvent() {
@@ -232,10 +258,25 @@ export class SettingsView extends LitElement {
     const tag = this._customWizardTag.trim().toLowerCase();
     const icon = this._customWizardIcon.trim();
     if (!label && !tag) return;
-    const event: CustomEventDef = { id: "", label: label || tag };
-    if (tag) event.tag = tag;
-    if (icon) event.icon = icon;
-    const next = [...this._customEvents, event];
+    const editId = this._customWizardEditId;
+    let next: CustomEventDef[];
+    if (editId) {
+      next = this._customEvents.map((c) =>
+        c.id === editId
+          ? {
+              id: editId,
+              label: label || tag,
+              tag: tag || null,
+              icon: icon || null,
+            }
+          : c
+      );
+    } else {
+      const event: CustomEventDef = { id: "", label: label || tag };
+      if (tag) event.tag = tag;
+      if (icon) event.icon = icon;
+      next = [...this._customEvents, event];
+    }
     const updates: {
       custom_events: CustomEventDef[];
       available_tags?: string[];
@@ -257,10 +298,11 @@ export class SettingsView extends LitElement {
 
   private _renderCustomEventWizard() {
     const tag = this._customWizardTag.trim();
+    const editing = this._customWizardEditId != null;
     return html`
       <div class="wizard-overlay" @click=${this._closeCustomWizard}>
         <ha-card class="wizard-card" @click=${(e: Event) => e.stopPropagation()}>
-          <div class="wizard-header">Add custom event</div>
+          <div class="wizard-header">${editing ? "Edit custom event" : "Add custom event"}</div>
           <div class="wizard-form">
             <div class="field">
               <label>Label</label>
@@ -307,23 +349,86 @@ export class SettingsView extends LitElement {
               class="save-btn"
               ?disabled=${!this._customWizardLabel.trim() && !tag}
               @click=${this._confirmCustomEvent}
-            >Add</button>
+            >${editing ? "Save" : "Add"}</button>
           </div>
         </ha-card>
       </div>
     `;
   }
 
-  private async _addEnvironmentEntity() {
-    if (!this._newEnvEntity || this._environmentEntities.includes(this._newEnvEntity)) return;
-    this._environmentEntities = [...this._environmentEntities, this._newEnvEntity];
-    this._newEnvEntity = "";
-    await this.api.updateSettings({ environment_entities: this._environmentEntities });
+  private _openEnvWizard(editIndex?: number) {
+    this._envWizardEditIndex = editIndex ?? null;
+    this._envWizardEntityId =
+      editIndex != null ? this._environmentEntities[editIndex] : "";
+    this._envWizardOpen = true;
+  }
+
+  private _closeEnvWizard() {
+    this._envWizardOpen = false;
+    this._envWizardEditIndex = null;
+  }
+
+  private async _confirmEnvEntity() {
+    const entityId = this._envWizardEntityId;
+    if (!entityId) return;
+    const editIndex = this._envWizardEditIndex;
+    let next: string[];
+    if (editIndex != null) {
+      if (
+        this._environmentEntities.some(
+          (e, i) => e === entityId && i !== editIndex
+        )
+      ) {
+        this._closeEnvWizard();
+        return;
+      }
+      next = this._environmentEntities.map((e, i) =>
+        i === editIndex ? entityId : e
+      );
+    } else {
+      if (this._environmentEntities.includes(entityId)) {
+        this._closeEnvWizard();
+        return;
+      }
+      next = [...this._environmentEntities, entityId];
+    }
+    this._environmentEntities = next;
+    this._closeEnvWizard();
+    await this.api.updateSettings({ environment_entities: next });
   }
 
   private async _removeEnvironmentEntity(entityId: string) {
     this._environmentEntities = this._environmentEntities.filter((e) => e !== entityId);
     await this.api.updateSettings({ environment_entities: this._environmentEntities });
+  }
+
+  private _renderEnvWizard() {
+    const editing = this._envWizardEditIndex != null;
+    return html`
+      <div class="wizard-overlay" @click=${this._closeEnvWizard}>
+        <ha-card class="wizard-card" @click=${(e: Event) => e.stopPropagation()}>
+          <div class="wizard-header">
+            ${editing ? "Edit environment entity" : "Add environment entity"}
+          </div>
+          <div class="wizard-form">
+            <ha-form
+              .hass=${this.hass}
+              .schema=${[{ name: "entity_id", selector: { entity: {} } }]}
+              .data=${{ entity_id: this._envWizardEntityId }}
+              .computeLabel=${() => "Entity"}
+              @value-changed=${(e: CustomEvent) => {
+                this._envWizardEntityId = e.detail.value.entity_id || "";
+              }}
+            ></ha-form>
+            <button
+              class="save-btn"
+              ?disabled=${!this._envWizardEntityId}
+              @click=${this._confirmEnvEntity}
+            >${editing ? "Save" : "Add"}</button>
+          </div>
+        </ha-card>
+      </div>
+    `;
   }
 
   private _onSleepGoalChange(e: Event) {
@@ -408,6 +513,8 @@ data:
   }
 
   private _renderWizard() {
+    const editing = this._wizardEditIndex != null;
+    const confirmLabel = editing ? "Save" : "Add";
     return html`
       <div class="wizard-overlay" @click=${this._closeWizard}>
         <ha-card class="wizard-card" @click=${(e: Event) => e.stopPropagation()}>
@@ -436,10 +543,12 @@ data:
             : this._wizardStep === "entity"
               ? html`
                   <div class="wizard-header">
-                    <button class="wizard-back" @click=${() => { this._wizardStep = "type"; }}>
-                      <ha-icon icon="mdi:arrow-left"></ha-icon>
-                    </button>
-                    Add entity
+                    ${editing
+                      ? nothing
+                      : html`<button class="wizard-back" @click=${() => { this._wizardStep = "type"; }}>
+                          <ha-icon icon="mdi:arrow-left"></ha-icon>
+                        </button>`}
+                    ${editing ? "Edit entity item" : "Add entity"}
                   </div>
                   <div class="wizard-form">
                     <ha-form
@@ -467,15 +576,17 @@ data:
                       class="save-btn"
                       ?disabled=${!this._wizardEntityId}
                       @click=${this._wizardConfirm}
-                    >Add</button>
+                    >${confirmLabel}</button>
                   </div>
                 `
               : html`
                   <div class="wizard-header">
-                    <button class="wizard-back" @click=${() => { this._wizardStep = "type"; }}>
-                      <ha-icon icon="mdi:arrow-left"></ha-icon>
-                    </button>
-                    Add text reminder
+                    ${editing
+                      ? nothing
+                      : html`<button class="wizard-back" @click=${() => { this._wizardStep = "type"; }}>
+                          <ha-icon icon="mdi:arrow-left"></ha-icon>
+                        </button>`}
+                    ${editing ? "Edit text reminder" : "Add text reminder"}
                   </div>
                   <div class="wizard-form">
                     <div class="field">
@@ -493,7 +604,7 @@ data:
                       class="save-btn"
                       ?disabled=${!this._wizardText}
                       @click=${this._wizardConfirm}
-                    >Add</button>
+                    >${confirmLabel}</button>
                   </div>
                 `}
         </ha-card>
@@ -651,7 +762,10 @@ data:
                 <div class="checklist-list">
                   ${this._checklist.map(
                     (item, i) => html`
-                      <div class="checklist-row">
+                      <div
+                        class="checklist-row clickable"
+                        @click=${() => this._openWizard(i)}
+                      >
                         <div class="checklist-row-info">
                           <ha-icon
                             icon=${item.type === "entity"
@@ -673,7 +787,10 @@ data:
                         </div>
                         <button
                           class="remove-btn"
-                          @click=${() => this._removeChecklistItem(i)}
+                          @click=${(e: Event) => {
+                            e.stopPropagation();
+                            this._removeChecklistItem(i);
+                          }}
                         >
                           <ha-icon icon="mdi:close"></ha-icon>
                         </button>
@@ -704,7 +821,10 @@ data:
                 <div class="checklist-list">
                   ${this._customEvents.map(
                     (custom) => html`
-                      <div class="checklist-row">
+                      <div
+                        class="checklist-row clickable"
+                        @click=${() => this._openCustomWizard(custom.id)}
+                      >
                         <div class="checklist-row-info">
                           <ha-icon
                             icon=${custom.icon || "mdi:star-circle-outline"}
@@ -718,7 +838,10 @@ data:
                         </div>
                         <button
                           class="remove-btn"
-                          @click=${() => this._removeCustomEvent(custom.id)}
+                          @click=${(e: Event) => {
+                            e.stopPropagation();
+                            this._removeCustomEvent(custom.id);
+                          }}
                         >
                           <ha-icon icon="mdi:close"></ha-icon>
                         </button>
@@ -881,8 +1004,11 @@ data:
                   ? html`
                       <div class="checklist-list">
                         ${this._environmentEntities.map(
-                          (entityId) => html`
-                            <div class="checklist-row">
+                          (entityId, i) => html`
+                            <div
+                              class="checklist-row clickable"
+                              @click=${() => this._openEnvWizard(i)}
+                            >
                               <div class="checklist-row-info">
                                 <ha-icon icon="mdi:thermometer"></ha-icon>
                                 <div class="checklist-row-detail">
@@ -891,7 +1017,10 @@ data:
                               </div>
                               <button
                                 class="remove-btn"
-                                @click=${() => this._removeEnvironmentEntity(entityId)}
+                                @click=${(e: Event) => {
+                                  e.stopPropagation();
+                                  this._removeEnvironmentEntity(entityId);
+                                }}
                               >
                                 <ha-icon icon="mdi:close"></ha-icon>
                               </button>
@@ -902,22 +1031,11 @@ data:
                     `
                   : nothing}
 
-                <div class="env-add-section">
-                  <ha-form
-                    .hass=${this.hass}
-                    .schema=${[{ name: "entity_id", selector: { entity: {} } }]}
-                    .data=${{ entity_id: this._newEnvEntity }}
-                    .computeLabel=${() => "Entity"}
-                    @value-changed=${(e: CustomEvent) => {
-                      this._newEnvEntity = e.detail.value.entity_id || "";
-                    }}
-                  ></ha-form>
-                  <button
-                    class="save-btn"
-                    ?disabled=${!this._newEnvEntity}
-                    @click=${this._addEnvironmentEntity}
-                  >Add</button>
-                </div>
+                <button class="add-btn" @click=${() => this._openEnvWizard()}>
+                  <ha-icon icon="mdi:plus"></ha-icon> Add entity
+                </button>
+
+                ${this._envWizardOpen ? this._renderEnvWizard() : nothing}
               `
             : nothing}
         </ha-card>
@@ -1284,6 +1402,13 @@ data:
         background: var(--secondary-background-color, #f5f5f5);
         border-radius: var(--ha-border-radius-md, 8px);
       }
+      .checklist-row.clickable {
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .checklist-row.clickable:hover {
+        background: var(--divider-color, #e0e0e0);
+      }
       .checklist-row-info {
         flex: 1;
         display: flex;
@@ -1444,12 +1569,6 @@ data:
       .tag-add-btn {
         flex-shrink: 0;
         padding: var(--ha-space-2, 8px) var(--ha-space-4, 16px);
-      }
-      .env-add-section {
-        display: flex;
-        flex-direction: column;
-        gap: var(--ha-space-2, 8px);
-        margin-top: var(--ha-space-2, 8px);
       }
       .data-link-btn {
         display: flex;
