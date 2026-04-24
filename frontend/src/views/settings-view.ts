@@ -1,6 +1,13 @@
 import { LitElement, html, css, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import type { HomeAssistant, UserState, ToolbarConfig, ChecklistItem, CustomEvent as CustomEventDef } from "../types";
+import type {
+  ChecklistItem,
+  CustomEvent as CustomEventDef,
+  HomeAssistant,
+  ToolbarConfig,
+  UserConfig,
+  UserState,
+} from "../types";
 import type { SleepTrackerApi } from "../api";
 import { tokens, viewStyles, formStyles, cardStyles } from "../styles";
 
@@ -49,6 +56,9 @@ export class SettingsView extends LitElement {
   @state() private _envWizardOpen = false;
   @state() private _envWizardEntityId = "";
   @state() private _envWizardEditIndex: number | null = null;
+  @state() private _copied: string | null = null;
+
+  private _copiedTimeoutId: number | null = null;
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -128,17 +138,17 @@ export class SettingsView extends LitElement {
   }
 
   private _onOnsetChange(e: Event) {
-    this._onset = parseInt((e.target as HTMLInputElement).value) || 30;
+    this._onset = parseInt((e.target as HTMLInputElement).value, 10) || 30;
     this._dirty = true;
   }
 
   private _onLatencyChange(e: Event) {
-    this._latency = parseInt((e.target as HTMLInputElement).value) || 15;
+    this._latency = parseInt((e.target as HTMLInputElement).value, 10) || 15;
     this._dirty = true;
   }
 
   private _onAwakeningGraceChange(e: Event) {
-    this._awakeningGrace = parseInt((e.target as HTMLInputElement).value) || 0;
+    this._awakeningGrace = parseInt((e.target as HTMLInputElement).value, 10) || 0;
     this._dirty = true;
   }
 
@@ -148,7 +158,7 @@ export class SettingsView extends LitElement {
   }
 
   private _onRetentionChange(e: Event) {
-    this._retentionDays = parseInt((e.target as HTMLInputElement).value) || 90;
+    this._retentionDays = parseInt((e.target as HTMLInputElement).value, 10) || 90;
     this._dirty = true;
   }
 
@@ -206,8 +216,12 @@ export class SettingsView extends LitElement {
     await this._saveChecklist();
   }
 
-  private async _toggleSetting(key: string, value: boolean) {
-    await this.api.updateSettings({ [key]: value } as any);
+  private async _toggleSetting(
+    key: "show_note" | "show_rating_quality" | "show_rating_feeling" | "show_tags" | "show_environment",
+    value: boolean,
+  ) {
+    const updates: Partial<UserConfig> = { [key]: value };
+    await this.api.updateSettings(updates);
   }
 
   private async _loadTagUsage() {
@@ -437,8 +451,6 @@ export class SettingsView extends LitElement {
     this._dirty = true;
   }
 
-  @state() private _copied: string | null = null;
-
   private _showEntity(entityId: string) {
     this.dispatchEvent(
       new CustomEvent("hass-more-info", {
@@ -452,8 +464,22 @@ export class SettingsView extends LitElement {
   private _copy(text: string, label: string) {
     navigator.clipboard.writeText(text).then(() => {
       this._copied = label;
-      setTimeout(() => { this._copied = null; }, 2000);
+      if (this._copiedTimeoutId !== null) {
+        window.clearTimeout(this._copiedTimeoutId);
+      }
+      this._copiedTimeoutId = window.setTimeout(() => {
+        this._copied = null;
+        this._copiedTimeoutId = null;
+      }, 2000);
     });
+  }
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback();
+    if (this._copiedTimeoutId !== null) {
+      window.clearTimeout(this._copiedTimeoutId);
+      this._copiedTimeoutId = null;
+    }
   }
 
   private _phoneAutomationYaml(): string {
@@ -509,7 +535,10 @@ data:
 
   private get _slug(): string {
     const name = this.userState.config?.display_name || "";
-    return name.toLowerCase().replace(/\s+/g, "_");
+    return name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
   }
 
   private _renderWizard() {
@@ -686,7 +715,7 @@ data:
               <ha-switch
                 .checked=${this._skipEventReview}
                 @change=${(e: Event) => {
-                  this._skipEventReview = (e.target as any).checked;
+                  this._skipEventReview = (e.target as HTMLInputElement).checked;
                   this._dirty = true;
                 }}
               ></ha-switch>
@@ -700,7 +729,7 @@ data:
               <ha-switch
                 .checked=${this._skipPhaseReview}
                 @change=${(e: Event) => {
-                  this._skipPhaseReview = (e.target as any).checked;
+                  this._skipPhaseReview = (e.target as HTMLInputElement).checked;
                   this._dirty = true;
                 }}
               ></ha-switch>
@@ -871,7 +900,7 @@ data:
             <ha-switch
               .checked=${this._showNote}
               @change=${(e: Event) => {
-                this._showNote = (e.target as any).checked;
+                this._showNote = (e.target as HTMLInputElement).checked;
                 this._toggleSetting("show_note", this._showNote);
               }}
             ></ha-switch>
@@ -885,7 +914,7 @@ data:
             <ha-switch
               .checked=${this._showRatingQuality}
               @change=${(e: Event) => {
-                this._showRatingQuality = (e.target as any).checked;
+                this._showRatingQuality = (e.target as HTMLInputElement).checked;
                 this._toggleSetting("show_rating_quality", this._showRatingQuality);
               }}
             ></ha-switch>
@@ -899,7 +928,7 @@ data:
             <ha-switch
               .checked=${this._showRatingFeeling}
               @change=${(e: Event) => {
-                this._showRatingFeeling = (e.target as any).checked;
+                this._showRatingFeeling = (e.target as HTMLInputElement).checked;
                 this._toggleSetting("show_rating_feeling", this._showRatingFeeling);
               }}
             ></ha-switch>
@@ -913,7 +942,7 @@ data:
             <ha-switch
               .checked=${this._showTags}
               @change=${(e: Event) => {
-                this._showTags = (e.target as any).checked;
+                this._showTags = (e.target as HTMLInputElement).checked;
                 this._toggleSetting("show_tags", this._showTags);
               }}
             ></ha-switch>
@@ -992,7 +1021,7 @@ data:
             <ha-switch
               .checked=${this._showEnvironment}
               @change=${(e: Event) => {
-                this._showEnvironment = (e.target as any).checked;
+                this._showEnvironment = (e.target as HTMLInputElement).checked;
                 this._toggleSetting("show_environment", this._showEnvironment);
               }}
             ></ha-switch>

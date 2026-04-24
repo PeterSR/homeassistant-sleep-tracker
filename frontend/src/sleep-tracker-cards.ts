@@ -17,25 +17,30 @@ import "./components/timeline-bar";
 // Last Night Card
 // ---------------------------------------------------------------------------
 
+interface LastNightCardConfig {
+  type?: string;
+}
+
 class SleepTrackerLastNightCard extends LitElement {
-  @state() private _config: any = {};
+  @state() private _config: LastNightCardConfig = {};
   @state() private _userState: UserState | null = null;
 
   private _hass?: HomeAssistant;
   private _api?: SleepTrackerApi;
   private _unsub?: () => void;
+  private _lastConnection?: HomeAssistant["connection"];
 
-  setConfig(config: any): void {
+  setConfig(config: LastNightCardConfig): void {
     this._config = config;
   }
 
   set hass(hass: HomeAssistant) {
     this._hass = hass;
-    if (!this._api && hass) {
+    if (!hass) return;
+    if (this._lastConnection !== hass.connection) {
+      this._lastConnection = hass.connection;
       this._api = new SleepTrackerApi(hass);
       this._subscribe();
-    } else if (this._api && hass) {
-      this._api = new SleepTrackerApi(hass);
     }
     this.requestUpdate();
   }
@@ -203,8 +208,8 @@ if (!customElements.get("sleep-tracker-last-night-card")) {
   customElements.define("sleep-tracker-last-night-card", SleepTrackerLastNightCard);
 }
 
-(window as any).customCards = (window as any).customCards || [];
-(window as any).customCards.push({
+window.customCards = window.customCards ?? [];
+window.customCards.push({
   type: "sleep-tracker-last-night-card",
   name: "Sleep Tracker Last Night",
   description: "Compact summary of the last completed sleep session",

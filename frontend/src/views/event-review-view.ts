@@ -1,6 +1,14 @@
 import { LitElement, html, css, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import type { HomeAssistant, UserState, SleepSession, SleepEvent, ToolbarConfig } from "../types";
+import {
+  CYCLE_TYPES,
+  type CycleType,
+  type HomeAssistant,
+  type SleepEvent,
+  type SleepSession,
+  type ToolbarConfig,
+  type UserState,
+} from "../types";
 import type { SleepTrackerApi } from "../api";
 import { tokens, viewStyles, cardStyles } from "../styles";
 import { formatDate, formatTime } from "../utils";
@@ -9,7 +17,9 @@ import "../components/timeline-bar";
 import "../components/session-meta";
 import "../components/automation-info-modal";
 
-const CYCLE_TYPES = ["awake", "still_awake", "fell_asleep"] as const;
+function isCycleType(t: string): t is CycleType {
+  return (CYCLE_TYPES as readonly string[]).includes(t);
+}
 
 @customElement("sleep-tracker-event-review-view")
 export class EventReviewView extends LitElement {
@@ -33,6 +43,9 @@ export class EventReviewView extends LitElement {
   willUpdate(changed: PropertyValues): void {
     if (changed.has("sessionId") && this.sessionId) {
       this._load();
+    }
+    if (this._session && (this._session.status === "completed" || this._session.status === "finalized")) {
+      this._navigate(`/night/${this._session.session_id}`);
     }
   }
 
@@ -74,9 +87,8 @@ export class EventReviewView extends LitElement {
   private async _cycleEventType(index: number) {
     if (!this._session || this._busy) return;
     const event = this._session.events[index];
-    // Only cycle user event types
-    const currentIdx = CYCLE_TYPES.indexOf(event.event_type as any);
-    if (currentIdx === -1) return; // pause/resume — not editable
+    if (!isCycleType(event.event_type)) return;
+    const currentIdx = CYCLE_TYPES.indexOf(event.event_type);
     const nextType = CYCLE_TYPES[(currentIdx + 1) % CYCLE_TYPES.length];
 
     this._busy = true;
@@ -166,7 +178,7 @@ export class EventReviewView extends LitElement {
   }
 
   private _isEditable(event: SleepEvent): boolean {
-    return CYCLE_TYPES.includes(event.event_type as any);
+    return isCycleType(event.event_type);
   }
 
   render() {
@@ -179,9 +191,7 @@ export class EventReviewView extends LitElement {
 
     const s = this._session;
 
-    // If session is already completed (has stored phases), redirect to detail
     if (s.status === "completed" || s.status === "finalized") {
-      this._navigate(`/night/${s.session_id}`);
       return nothing;
     }
 
@@ -212,7 +222,9 @@ export class EventReviewView extends LitElement {
                 .api=${this.api}
                 .session=${s}
                 .config=${this.userState.config!}
-                @session-updated=${(e: CustomEvent) => { this._session = e.detail.session; }}
+                @session-updated=${(e: CustomEvent<{ session: SleepSession }>) => {
+                  this._session = e.detail.session;
+                }}
               ></sleep-tracker-session-meta>
             `
           : nothing}
@@ -307,7 +319,7 @@ export class EventReviewView extends LitElement {
       <div class="event-item">
         <span
           class="event-type ${event.event_type} ${editable ? "clickable" : ""}"
-          @click=${editable ? () => this._cycleEventType(index) : nothing}
+          @click=${editable ? () => this._cycleEventType(index) : undefined}
           title=${editable ? "Click to change type" : ""}
         >
           ${this._eventLabel(event)}

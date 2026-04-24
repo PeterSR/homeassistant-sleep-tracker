@@ -135,7 +135,7 @@ class SleepTrackerStore:
 
     def purge_old_sessions(self, user_id: str, retention_days: int) -> int:
         """Delete sessions older than retention period. Returns count deleted."""
-        cutoff_dt = dt_util.now() - timedelta(days=retention_days)
+        cutoff_dt = dt_util.utcnow() - timedelta(days=retention_days)
 
         to_remove: list[str] = []
         for sid, s in self.sessions.items():
@@ -144,8 +144,11 @@ class SleepTrackerStore:
             try:
                 started = datetime.fromisoformat(s.started_at)
             except ValueError:
+                _LOGGER.debug(
+                    "Skipping session %s: unparseable started_at %r",
+                    sid, s.started_at,
+                )
                 continue
-            # Compare as aware datetimes (handles mixed UTC/local timestamps)
             if started.tzinfo is None:
                 started = started.replace(tzinfo=cutoff_dt.tzinfo)
             if started < cutoff_dt:

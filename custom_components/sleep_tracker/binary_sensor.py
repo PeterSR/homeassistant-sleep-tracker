@@ -2,21 +2,19 @@
 
 from __future__ import annotations
 
-import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import slugify
 
 from .const import DOMAIN
 
 if TYPE_CHECKING:
     from .coordinator import SleepTrackerCoordinator
-
-_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -57,11 +55,11 @@ class InSessionSensor(BinarySensorEntity):
     ) -> None:
         self._coordinator = coordinator
         self._user_id = user_id
-        self._unsub: callable | None = None
+        self._unsub: Callable[[], None] | None = None
 
         config = coordinator.store.get_user_config(user_id)
         display_name = config.display_name if config else user_id[:8]
-        slug = display_name.lower().replace(" ", "_")
+        slug = slugify(display_name)
 
         self._attr_unique_id = f"sleep_tracker_{user_id}_in_session"
         self.entity_id = f"binary_sensor.sleep_tracker_{slug}_in_session"

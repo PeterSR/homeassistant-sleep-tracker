@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING
+
+import aiohttp
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -14,6 +17,8 @@ if TYPE_CHECKING:
     from .coordinator import SleepTrackerCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+EXPORT_TIMEOUT_SECONDS = 30
 
 
 class ExportError(Exception):
@@ -70,7 +75,10 @@ async def async_export_session(
 
     try:
         async with client.post(
-            config.export_url, json=payload, headers=headers
+            config.export_url,
+            json=payload,
+            headers=headers,
+            timeout=aiohttp.ClientTimeout(total=EXPORT_TIMEOUT_SECONDS),
         ) as resp:
             if resp.status >= 300:
                 body = await resp.text()
@@ -79,7 +87,11 @@ async def async_export_session(
                 )
     except ExportError:
         raise
-    except Exception as err:
+    except asyncio.TimeoutError as err:
+        raise ExportError(
+            f"Export timed out after {EXPORT_TIMEOUT_SECONDS}s"
+        ) from err
+    except aiohttp.ClientError as err:
         raise ExportError(f"Export request failed: {err}") from err
 
     coordinator.store.update_session(session_id, exported=True)

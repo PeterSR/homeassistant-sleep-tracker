@@ -1,6 +1,11 @@
-import type { ChecklistItem, EventType, HomeAssistant, SleepSession, UserConfig, UserState } from "./types";
-
-type PulseEventType = Exclude<EventType, "pause" | "resume" | "custom">;
+import type {
+  CycleType,
+  HomeAssistant,
+  SleepSession,
+  StatsData,
+  UserConfig,
+  UserState,
+} from "./types";
 
 export class SleepTrackerApi {
   constructor(private hass: HomeAssistant) {}
@@ -49,7 +54,7 @@ export class SleepTrackerApi {
   async editEvent(
     session_id: string,
     event_index: number,
-    event_type: "awake" | "still_awake" | "fell_asleep"
+    event_type: CycleType
   ): Promise<SleepSession> {
     return this.hass.callWS({
       type: "sleep_tracker/edit_event",
@@ -77,7 +82,7 @@ export class SleepTrackerApi {
     });
   }
 
-  async event(event_type: PulseEventType): Promise<SleepSession> {
+  async event(event_type: CycleType): Promise<SleepSession> {
     return this.hass.callWS({
       type: "sleep_tracker/event",
       event_type,
@@ -109,7 +114,7 @@ export class SleepTrackerApi {
     });
   }
 
-  async getStats(days = 30): Promise<any> {
+  async getStats(days = 30): Promise<StatsData> {
     return this.hass.callWS({
       type: "sleep_tracker/get_stats",
       days,

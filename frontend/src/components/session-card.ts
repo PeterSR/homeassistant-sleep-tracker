@@ -59,7 +59,7 @@ export class SessionCard extends LitElement {
               </div>
             `
           : nothing}
-        ${(s.rating_quality || s.rating_feeling || s.tags?.length)
+        ${s.rating_quality || s.tags?.length
           ? html`
               <div class="meta-row">
                 ${s.rating_quality

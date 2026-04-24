@@ -10,6 +10,16 @@ export class PulseButton extends LitElement {
   @state() private _sending = false;
   @state() private _flash: "awake" | "still_awake" | null = null;
 
+  private _flashTimeoutId: number | null = null;
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback();
+    if (this._flashTimeoutId !== null) {
+      window.clearTimeout(this._flashTimeoutId);
+      this._flashTimeoutId = null;
+    }
+  }
+
   private async _sendEvent(type: "awake" | "still_awake") {
     if (this._sending || this.disabled) return;
     this._sending = true;
@@ -22,8 +32,12 @@ export class PulseButton extends LitElement {
         })
       );
       this._flash = type;
-      setTimeout(() => {
+      if (this._flashTimeoutId !== null) {
+        window.clearTimeout(this._flashTimeoutId);
+      }
+      this._flashTimeoutId = window.setTimeout(() => {
         this._flash = null;
+        this._flashTimeoutId = null;
       }, 600);
     } catch (err) {
       console.error("Event failed:", err);

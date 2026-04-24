@@ -1,6 +1,13 @@
 import { LitElement, html, css, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import type { HomeAssistant, UserState, SleepSession, ToolbarConfig } from "../types";
+import type {
+  HomeAssistant,
+  SleepEvent,
+  SleepPhase,
+  SleepSession,
+  ToolbarConfig,
+  UserState,
+} from "../types";
 import type { SleepTrackerApi } from "../api";
 import { tokens, viewStyles, sectionStyles, cardStyles } from "../styles";
 import { formatDate, formatTime, formatDuration } from "../utils";
@@ -30,7 +37,7 @@ export class NightDetailView extends LitElement {
   @state() private _confirmDelete = false;
   @state() private _confirmResume = false;
   @state() private _appendingPhase: { state: "awake" | "asleep"; endTime: string } | null = null;
-  @state() private _automationModal: any = null;
+  @state() private _automationModal: SleepEvent | null = null;
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -40,6 +47,9 @@ export class NightDetailView extends LitElement {
   willUpdate(changed: PropertyValues): void {
     if (changed.has("sessionId") && this.sessionId) {
       this._load();
+    }
+    if (this._session && this._session.status === "stopped") {
+      this._navigate(`/review/${this._session.session_id}`);
     }
   }
 
@@ -138,10 +148,13 @@ export class NightDetailView extends LitElement {
       return;
     }
 
-    // Build a new ISO timestamp by replacing the time portion of the existing boundary
     const oldTs = this._session.phases[afterIndex].end;
     const oldDate = new Date(oldTs);
     const [h, m] = newTimeValue.split(":").map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) {
+      this._editingBoundary = null;
+      return;
+    }
     oldDate.setHours(h, m, 0, 0);
     const newTs = this._toLocalIso(oldDate);
 
@@ -207,7 +220,7 @@ export class NightDetailView extends LitElement {
         <h3>Environment</h3>
         <div class="env-list">
           ${config.environment_entities.map((entityId) => {
-            const stateObj = this.hass.states?.[entityId];
+            const stateObj = this.hass.states[entityId];
             if (!stateObj) {
               return html`
                 <div class="env-tile unavailable">
@@ -326,9 +339,9 @@ export class NightDetailView extends LitElement {
     if (!last) return;
 
     const { state, endTime } = this._appendingPhase;
-    // Build an ISO timestamp from the time input, anchored to the last phase's date.
     const lastEndDate = new Date(last.end);
     const [h, m] = endTime.split(":").map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return;
     const newEnd = new Date(lastEndDate);
     newEnd.setHours(h, m, 0, 0);
     // If the new end would be <= last.end, roll forward one day (e.g. user is
@@ -361,9 +374,7 @@ export class NightDetailView extends LitElement {
       return html`<div class="container"><p>Session not found.</p></div>`;
     }
 
-    // Stopped sessions (event review pending) should go to the review view
     if (this._session.status === "stopped") {
-      this._navigate(`/review/${this._session.session_id}`);
       return nothing;
     }
 
@@ -422,7 +433,9 @@ export class NightDetailView extends LitElement {
                 .api=${this.api}
                 .session=${s}
                 .config=${this.userState.config}
-                @session-updated=${(e: CustomEvent) => { this._session = e.detail.session; }}
+                @session-updated=${(e: CustomEvent<{ session: SleepSession }>) => {
+                  this._session = e.detail.session;
+                }}
               ></sleep-tracker-session-meta>
             `
           : nothing}
@@ -668,7 +681,7 @@ export class NightDetailView extends LitElement {
     `;
   }
 
-  private _renderPhaseList(phases: any[], editable: boolean) {
+  private _renderPhaseList(phases: SleepPhase[], editable: boolean) {
     if (phases.length === 0) {
       return html`<p class="empty-text">No phases.</p>`;
     }
@@ -755,7 +768,7 @@ export class NightDetailView extends LitElement {
                       : html`
                           <span
                             class="boundary-time ${editable ? "clickable" : ""}"
-                            @click=${editable ? () => this._startEditBoundary(i) : nothing}
+                            @click=${editable ? () => this._startEditBoundary(i) : undefined}
                             title=${editable ? "Click to adjust boundary" : ""}
                           >
                             ↕ ${formatTime(p.end)}
@@ -782,7 +795,7 @@ export class NightDetailView extends LitElement {
     `;
   }
 
-  private _eventLabel(e: any): string {
+  private _eventLabel(e: SleepEvent): string {
     switch (e.event_type) {
       case "awake": return "Woke up";
       case "still_awake": return "Still awake";
@@ -799,7 +812,7 @@ export class NightDetailView extends LitElement {
     }
   }
 
-  private _renderEventList(events: any[]) {
+  private _renderEventList(events: SleepEvent[]) {
     if (events.length === 0) {
       return html`<p class="empty-text">No events recorded.</p>`;
     }

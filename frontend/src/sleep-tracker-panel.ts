@@ -1,4 +1,4 @@
-import { LitElement, html, css, nothing, type PropertyValues, type TemplateResult } from "lit";
+import { LitElement, html, css, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { HomeAssistant, PanelInfo, Route, UserState, ToolbarConfig } from "./types";
 import { SleepTrackerApi } from "./api";
@@ -26,7 +26,7 @@ export class SleepTrackerPanel extends LitElement {
 
   private _api!: SleepTrackerApi;
   private _unsub?: () => void;
-  private _lastConnection?: any;
+  private _lastConnection?: HomeAssistant["connection"];
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -144,7 +144,7 @@ export class SleepTrackerPanel extends LitElement {
           : nothing}
         <div class="toolbar-title">${tb.title}</div>
         <div class="toolbar-actions">
-          ${tb.actions ? (tb.actions as TemplateResult) : nothing}
+          ${tb.actions ?? nothing}
         </div>
       </div>
       <div class="content">

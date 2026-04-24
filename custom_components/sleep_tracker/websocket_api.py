@@ -2,36 +2,77 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 import voluptuous as vol
 
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 
-from .const import DOMAIN, EVENT_AWAKE, EVENT_FELL_ASLEEP, EVENT_STILL_AWAKE
+from .const import (
+    DEFAULT_PANEL_SOURCE,
+    DOMAIN,
+    EVENT_AWAKE,
+    EVENT_FELL_ASLEEP,
+    EVENT_STILL_AWAKE,
+)
 from .models import CHECKLIST_TYPE_ENTITY, CHECKLIST_TYPE_TEXT
+
+_MAX_ID_LEN = 64
+_MAX_LABEL_LEN = 128
+_MAX_TAG_LEN = 64
+_MAX_ICON_LEN = 64
+_MAX_LIST_ITEMS = 100
+_MAX_HEADER_LEN = 1024
+_ISO_DATE_RE = r"^\d{4}-\d{2}-\d{2}"
+
+_short_str = vol.All(str, vol.Length(max=_MAX_TAG_LEN))
+_icon_str = vol.Any(vol.All(str, vol.Length(max=_MAX_ICON_LEN)), None)
+_tag_str = vol.Any(vol.All(str, vol.Length(max=_MAX_TAG_LEN)), None)
 
 CHECKLIST_ITEM_SCHEMA = vol.Schema(
     {
         vol.Required("type"): vol.In([CHECKLIST_TYPE_ENTITY, CHECKLIST_TYPE_TEXT]),
-        vol.Optional("entity_id"): str,
-        vol.Optional("desired_state"): str,
-        vol.Optional("text"): str,
+        vol.Optional("entity_id"): vol.All(str, vol.Length(max=255)),
+        vol.Optional("desired_state"): vol.All(str, vol.Length(max=255)),
+        vol.Optional("text"): vol.All(str, vol.Length(max=500)),
     }
 )
 
 CUSTOM_EVENT_SCHEMA = vol.Schema(
     {
-        vol.Optional("id"): str,
-        vol.Optional("label"): str,
-        vol.Optional("icon"): vol.Any(str, None),
-        vol.Optional("tag"): vol.Any(str, None),
+        vol.Optional("id"): vol.All(str, vol.Length(max=_MAX_ID_LEN)),
+        vol.Optional("label"): vol.All(str, vol.Length(max=_MAX_LABEL_LEN)),
+        vol.Optional("icon"): _icon_str,
+        vol.Optional("tag"): _tag_str,
     }
 )
 
-_LOGGER = logging.getLogger(__name__)
+_SESSION_META_FIELDS = {"note", "rating_quality", "rating_feeling", "tags"}
+
+_UPDATE_SETTINGS_FIELDS: dict = {
+    "sleep_onset_minutes": vol.All(int, vol.Range(min=0, max=120)),
+    "fall_asleep_latency_minutes": vol.All(int, vol.Range(min=0, max=120)),
+    "awakening_grace_minutes": vol.All(int, vol.Range(min=0, max=180)),
+    "skip_event_review": bool,
+    "skip_phase_review": bool,
+    "export_url": vol.Any(vol.All(str, vol.Length(max=2048)), None),
+    "export_headers": vol.Schema({_short_str: vol.All(str, vol.Length(max=_MAX_HEADER_LEN))}),
+    "retention_days": vol.All(int, vol.Range(min=7, max=365)),
+    "checklist": vol.All([CHECKLIST_ITEM_SCHEMA], vol.Length(max=_MAX_LIST_ITEMS)),
+    "show_note": bool,
+    "show_rating_quality": bool,
+    "show_rating_feeling": bool,
+    "show_tags": bool,
+    "available_tags": vol.All([_short_str], vol.Length(max=_MAX_LIST_ITEMS)),
+    "show_environment": bool,
+    "environment_entities": vol.All(
+        [vol.All(str, vol.Length(max=255))], vol.Length(max=_MAX_LIST_ITEMS)
+    ),
+    "sleep_goal_minutes": vol.All(int, vol.Range(min=0, max=1440)),
+    "custom_events": vol.All([CUSTOM_EVENT_SCHEMA], vol.Length(max=_MAX_LIST_ITEMS)),
+}
 
 
 def async_register_websocket_api(hass: HomeAssistant) -> None:
@@ -66,8 +107,12 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_subscribe)
 
 
-def _get_data(hass: HomeAssistant) -> dict[str, Any]:
-    return hass.data[DOMAIN]
+def _get_coordinator(hass: HomeAssistant):
+    """Return the coordinator; raise if the integration isn't set up yet."""
+    data = hass.data.get(DOMAIN)
+    if data is None:
+        raise HomeAssistantError("Sleep Tracker is not set up")
+    return data["coordinator"]
 
 
 # --- Get State ---
@@ -80,7 +125,7 @@ async def ws_get_state(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Get current user's state."""
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
     state = coordinator.get_user_state(user_id)
     connection.send_result(msg["id"], state)
@@ -100,7 +145,7 @@ async def ws_get_history(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Get past sessions for current user."""
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
     sessions = coordinator.get_user_history(user_id, msg["limit"], msg["offset"])
     connection.send_result(msg["id"], {"sessions": sessions})
@@ -119,7 +164,7 @@ async def ws_get_session(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Get detailed session data."""
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
     session = coordinator.get_session_detail(msg["session_id"])
 
@@ -143,7 +188,7 @@ async def ws_get_stats(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Get aggregated sleep statistics for the current user."""
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
     stats = coordinator.get_user_stats(user_id, msg["days"])
     connection.send_result(msg["id"], stats)
@@ -159,13 +204,13 @@ async def ws_start_sleep(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Start a sleep session for the current user."""
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
 
     try:
-        session = await coordinator.async_start_sleep(user_id, source="panel")
+        session = await coordinator.async_start_sleep(user_id, source=DEFAULT_PANEL_SOURCE)
         connection.send_result(msg["id"], session)
-    except ValueError as err:
+    except HomeAssistantError as err:
         connection.send_error(msg["id"], "start_failed", str(err))
 
 
@@ -179,13 +224,13 @@ async def ws_stop_sleep(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Stop the active sleep session."""
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
 
     try:
-        session = await coordinator.async_stop_sleep(user_id, source="panel")
+        session = await coordinator.async_stop_sleep(user_id, source=DEFAULT_PANEL_SOURCE)
         connection.send_result(msg["id"], session)
-    except ValueError as err:
+    except HomeAssistantError as err:
         connection.send_error(msg["id"], "stop_failed", str(err))
 
 
@@ -199,13 +244,13 @@ async def ws_pause_sleep(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Pause the active sleep session."""
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
 
     try:
-        session = await coordinator.async_pause_sleep(user_id, source="panel")
+        session = await coordinator.async_pause_sleep(user_id, source=DEFAULT_PANEL_SOURCE)
         connection.send_result(msg["id"], session)
-    except ValueError as err:
+    except HomeAssistantError as err:
         connection.send_error(msg["id"], "pause_failed", str(err))
 
 
@@ -222,13 +267,13 @@ async def ws_reopen_session(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Reopen a stopped session, allowing events to be appended again."""
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
 
     try:
         session = await coordinator.async_reopen_session(user_id, msg["session_id"])
         connection.send_result(msg["id"], session)
-    except ValueError as err:
+    except HomeAssistantError as err:
         connection.send_error(msg["id"], "reopen_failed", str(err))
 
 
@@ -247,15 +292,15 @@ async def ws_event(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Record an event in the active session."""
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
 
     try:
         session = await coordinator.async_event(
-            user_id, msg["event_type"], source="panel"
+            user_id, msg["event_type"], source=DEFAULT_PANEL_SOURCE
         )
         connection.send_result(msg["id"], session)
-    except ValueError as err:
+    except HomeAssistantError as err:
         connection.send_error(msg["id"], "event_failed", str(err))
 
 
@@ -272,15 +317,15 @@ async def ws_custom_event(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Record a user-defined custom event in the active session."""
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
 
     try:
         session = await coordinator.async_custom_event(
-            user_id, msg["custom_event_id"], source="panel"
+            user_id, msg["custom_event_id"], source=DEFAULT_PANEL_SOURCE
         )
         connection.send_result(msg["id"], session)
-    except ValueError as err:
+    except HomeAssistantError as err:
         connection.send_error(msg["id"], "event_failed", str(err))
 
 
@@ -289,8 +334,8 @@ async def ws_custom_event(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "sleep_tracker/export_data",
-        vol.Optional("start_date"): vol.Any(str, None),
-        vol.Optional("end_date"): vol.Any(str, None),
+        vol.Optional("start_date"): vol.Any(vol.All(str, vol.Match(_ISO_DATE_RE)), None),
+        vol.Optional("end_date"): vol.Any(vol.All(str, vol.Match(_ISO_DATE_RE)), None),
     }
 )
 @websocket_api.async_response
@@ -298,7 +343,7 @@ async def ws_export_data(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Export all sessions for the current user in an optional date range."""
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
     data = coordinator.export_user_data(
         user_id, msg.get("start_date"), msg.get("end_date")
@@ -319,13 +364,13 @@ async def ws_complete_session(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Complete event review: materialize phases from events."""
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
 
     try:
         session = await coordinator.async_complete_session(user_id, msg["session_id"])
         connection.send_result(msg["id"], session)
-    except ValueError as err:
+    except HomeAssistantError as err:
         connection.send_error(msg["id"], "complete_failed", str(err))
 
 
@@ -346,7 +391,7 @@ async def ws_edit_event(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Change the type of an event during event review."""
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
 
     try:
@@ -354,7 +399,7 @@ async def ws_edit_event(
             user_id, msg["session_id"], msg["event_index"], msg["event_type"]
         )
         connection.send_result(msg["id"], session)
-    except ValueError as err:
+    except HomeAssistantError as err:
         connection.send_error(msg["id"], "edit_failed", str(err))
 
 
@@ -372,7 +417,7 @@ async def ws_delete_event(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Delete an event during event review."""
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
 
     try:
@@ -380,7 +425,7 @@ async def ws_delete_event(
             user_id, msg["session_id"], msg["event_index"]
         )
         connection.send_result(msg["id"], session)
-    except ValueError as err:
+    except HomeAssistantError as err:
         connection.send_error(msg["id"], "delete_failed", str(err))
 
 
@@ -397,14 +442,14 @@ async def ws_setup_user(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Set up sleep tracking for the current user."""
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
     display_name = msg.get("display_name") or connection.user.name or user_id[:8]
 
     try:
         config = await coordinator.async_setup_user(user_id, display_name)
         connection.send_result(msg["id"], config)
-    except ValueError as err:
+    except HomeAssistantError as err:
         connection.send_error(msg["id"], "setup_failed", str(err))
 
 
@@ -413,34 +458,7 @@ async def ws_setup_user(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "sleep_tracker/update_settings",
-        vol.Optional("sleep_onset_minutes"): vol.All(
-            int, vol.Range(min=0, max=120)
-        ),
-        vol.Optional("fall_asleep_latency_minutes"): vol.All(
-            int, vol.Range(min=0, max=120)
-        ),
-        vol.Optional("awakening_grace_minutes"): vol.All(
-            int, vol.Range(min=0, max=180)
-        ),
-        vol.Optional("skip_event_review"): bool,
-        vol.Optional("skip_phase_review"): bool,
-        vol.Optional("export_url"): vol.Any(str, None),
-        vol.Optional("export_headers"): dict,
-        vol.Optional("retention_days"): vol.All(
-            int, vol.Range(min=7, max=365)
-        ),
-        vol.Optional("checklist"): [CHECKLIST_ITEM_SCHEMA],
-        vol.Optional("show_note"): bool,
-        vol.Optional("show_rating_quality"): bool,
-        vol.Optional("show_rating_feeling"): bool,
-        vol.Optional("show_tags"): bool,
-        vol.Optional("available_tags"): [str],
-        vol.Optional("show_environment"): bool,
-        vol.Optional("environment_entities"): [str],
-        vol.Optional("sleep_goal_minutes"): vol.All(
-            int, vol.Range(min=0, max=1440)
-        ),
-        vol.Optional("custom_events"): [CUSTOM_EVENT_SCHEMA],
+        **{vol.Optional(k): v for k, v in _UPDATE_SETTINGS_FIELDS.items()},
     }
 )
 @websocket_api.async_response
@@ -448,19 +466,15 @@ async def ws_update_settings(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Update user settings."""
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
 
-    updates = {
-        k: v
-        for k, v in msg.items()
-        if k not in ("id", "type")
-    }
+    updates = {k: msg[k] for k in _UPDATE_SETTINGS_FIELDS if k in msg}
 
     try:
         config = await coordinator.async_update_user_config(user_id, **updates)
         connection.send_result(msg["id"], config)
-    except ValueError as err:
+    except HomeAssistantError as err:
         connection.send_error(msg["id"], "update_failed", str(err))
 
 
@@ -478,7 +492,7 @@ async def ws_delete_phase(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Delete a phase from a session."""
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
 
     try:
@@ -486,7 +500,7 @@ async def ws_delete_phase(
             user_id, msg["session_id"], msg["phase_index"]
         )
         connection.send_result(msg["id"], session)
-    except ValueError as err:
+    except HomeAssistantError as err:
         connection.send_error(msg["id"], "delete_failed", str(err))
 
 
@@ -506,7 +520,7 @@ async def ws_split_phase(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Split a phase by inserting an opposite-state wedge."""
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
 
     try:
@@ -518,7 +532,7 @@ async def ws_split_phase(
             msg["wedge_minutes"],
         )
         connection.send_result(msg["id"], session)
-    except ValueError as err:
+    except HomeAssistantError as err:
         connection.send_error(msg["id"], "split_failed", str(err))
 
 
@@ -537,7 +551,7 @@ async def ws_adjust_phase_boundary(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Move a phase boundary."""
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
 
     try:
@@ -545,7 +559,7 @@ async def ws_adjust_phase_boundary(
             user_id, msg["session_id"], msg["after_index"], msg["new_time"]
         )
         connection.send_result(msg["id"], session)
-    except ValueError as err:
+    except HomeAssistantError as err:
         connection.send_error(msg["id"], "adjust_failed", str(err))
 
 
@@ -564,7 +578,7 @@ async def ws_append_phase(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Append a new phase at the end of the session."""
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
 
     try:
@@ -572,7 +586,7 @@ async def ws_append_phase(
             user_id, msg["session_id"], msg["state"], msg["end_timestamp"]
         )
         connection.send_result(msg["id"], session)
-    except ValueError as err:
+    except HomeAssistantError as err:
         connection.send_error(msg["id"], "append_failed", str(err))
 
 
@@ -589,7 +603,7 @@ async def ws_undo_edit(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Undo the most recent phase edit on a session."""
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
 
     s = coordinator.store.get_session(msg["session_id"])
@@ -600,7 +614,7 @@ async def ws_undo_edit(
     try:
         session = await coordinator.async_undo_edit(user_id, msg["session_id"])
         connection.send_result(msg["id"], session)
-    except ValueError as err:
+    except HomeAssistantError as err:
         connection.send_error(msg["id"], "undo_failed", str(err))
 
 
@@ -617,13 +631,13 @@ async def ws_delete_session(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Delete a session permanently."""
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
 
     try:
         await coordinator.async_delete_session(user_id, msg["session_id"])
         connection.send_result(msg["id"], {"success": True})
-    except ValueError as err:
+    except HomeAssistantError as err:
         connection.send_error(msg["id"], "delete_failed", str(err))
 
 
@@ -648,21 +662,17 @@ async def ws_update_session_meta(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Update session metadata (note, ratings, tags)."""
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
 
-    meta = {
-        k: v
-        for k, v in msg.items()
-        if k not in ("id", "type", "session_id")
-    }
+    meta = {k: msg[k] for k in _SESSION_META_FIELDS if k in msg}
 
     try:
         session = await coordinator.async_update_session_meta(
             user_id, msg["session_id"], **meta
         )
         connection.send_result(msg["id"], session)
-    except ValueError as err:
+    except HomeAssistantError as err:
         connection.send_error(msg["id"], "update_meta_failed", str(err))
 
 
@@ -676,7 +686,7 @@ async def ws_get_tag_usage(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Get tag usage counts for the current user."""
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
     usage = coordinator.get_tag_usage(user_id)
     connection.send_result(msg["id"], usage)
@@ -695,7 +705,7 @@ async def ws_finalize_session(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Finalize a session (locks edits, triggers export if configured)."""
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
 
     try:
@@ -703,7 +713,7 @@ async def ws_finalize_session(
             user_id, msg["session_id"]
         )
         connection.send_result(msg["id"], session)
-    except ValueError as err:
+    except HomeAssistantError as err:
         connection.send_error(msg["id"], "finalize_failed", str(err))
 
 
@@ -720,7 +730,7 @@ async def ws_unfinalize_session(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Unfinalize a session (escape hatch to re-enable edits)."""
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
 
     try:
@@ -728,7 +738,7 @@ async def ws_unfinalize_session(
             user_id, msg["session_id"]
         )
         connection.send_result(msg["id"], session)
-    except ValueError as err:
+    except HomeAssistantError as err:
         connection.send_error(msg["id"], "unfinalize_failed", str(err))
 
 
@@ -745,9 +755,9 @@ async def ws_export_session(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Export a session to the configured REST endpoint."""
-    from .export import async_export_session
+    from .export import ExportError, async_export_session
 
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
 
     session = coordinator.store.get_session(msg["session_id"])
@@ -758,7 +768,7 @@ async def ws_export_session(
     try:
         await async_export_session(hass, coordinator, msg["session_id"])
         connection.send_result(msg["id"], {"success": True})
-    except Exception as err:
+    except ExportError as err:
         connection.send_error(msg["id"], "export_failed", str(err))
 
 
@@ -772,7 +782,7 @@ def ws_subscribe(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Subscribe to real-time state updates for the current user."""
-    coordinator = _get_data(hass)["coordinator"]
+    coordinator = _get_coordinator(hass)
     user_id = connection.user.id
 
     connection.send_result(msg["id"])

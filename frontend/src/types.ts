@@ -1,11 +1,21 @@
+import type { TemplateResult } from "lit";
+
+interface KnownHassAttributes {
+  friendly_name?: string;
+  unit_of_measurement?: string;
+  icon?: string;
+  device_class?: string;
+  options?: string[];
+}
+
 export interface HassEntity {
   entity_id: string;
   state: string;
-  attributes: Record<string, any>;
+  attributes: KnownHassAttributes & Record<string, unknown>;
 }
 
 export interface HomeAssistant {
-  callWS: <T = any>(msg: Record<string, unknown>) => Promise<T>;
+  callWS: <T = unknown>(msg: Record<string, unknown>) => Promise<T>;
   callService: (
     domain: string,
     service: string,
@@ -33,16 +43,13 @@ export interface Route {
 export interface ToolbarConfig {
   title: string;
   backPath?: string;
-  actions?: unknown;
+  actions?: TemplateResult;
 }
 
-export type EventType =
-  | "awake"
-  | "still_awake"
-  | "fell_asleep"
-  | "pause"
-  | "resume"
-  | "custom";
+export const CYCLE_TYPES = ["awake", "still_awake", "fell_asleep"] as const;
+export type CycleType = (typeof CYCLE_TYPES)[number];
+
+export type EventType = CycleType | "pause" | "resume" | "custom";
 
 export interface SleepEvent {
   timestamp: string;
@@ -136,4 +143,45 @@ export interface UserState {
   active_session: SleepSession | null;
   last_session?: SleepSession | null;
   unfinalized_sessions?: SleepSession[];
+}
+
+export interface DailyStat {
+  session_id: string;
+  date: string;
+  started_at: string;
+  ended_at: string;
+  time_in_bed_minutes: number;
+  sleep_period_minutes: number;
+  total_sleep_minutes: number;
+  sleep_efficiency: number;
+  awakenings: number;
+  time_to_fall_asleep_minutes: number;
+  time_before_getting_up_minutes: number;
+}
+
+export interface StatsData {
+  days: number;
+  session_count: number;
+  daily: DailyStat[];
+  averages: {
+    total_sleep_minutes: number;
+    sleep_period_minutes: number;
+    sleep_efficiency: number;
+    awakenings: number;
+    time_to_fall_asleep_minutes: number;
+    time_before_getting_up_minutes: number;
+  };
+}
+
+export interface CustomCardEntry {
+  type: string;
+  name: string;
+  description: string;
+  preview?: boolean;
+}
+
+declare global {
+  interface Window {
+    customCards?: CustomCardEntry[];
+  }
 }

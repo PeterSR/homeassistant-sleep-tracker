@@ -44,7 +44,7 @@ async def resolve_automation_metadata(
 
     try:
         contexts = await async_list_contexts(hass, None)
-    except Exception:
+    except (KeyError, AttributeError, TypeError):
         _LOGGER.debug(
             "trace.async_list_contexts failed for parent %s", parent_id, exc_info=True
         )
@@ -66,7 +66,7 @@ async def resolve_automation_metadata(
             extracted = _extract_trigger_id(trace)
             if extracted is not None:
                 trigger_id = extracted
-    except Exception:
+    except (KeyError, AttributeError, TypeError):
         _LOGGER.debug(
             "trigger.id extraction failed for automation %s run %s",
             unique_id, run_id, exc_info=True,
@@ -83,7 +83,7 @@ def _entity_id_for_automation(hass: HomeAssistant, unique_id: str | None) -> str
 
         registry = er.async_get(hass)
         return registry.async_get_entity_id("automation", "automation", unique_id)
-    except Exception:
+    except (KeyError, AttributeError, TypeError):
         _LOGGER.debug(
             "entity_registry lookup failed for automation %s", unique_id, exc_info=True
         )

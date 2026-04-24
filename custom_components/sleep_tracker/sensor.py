@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import logging
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -16,13 +15,12 @@ from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import slugify
 
-from .const import DOMAIN, PHASE_ASLEEP, PHASE_AWAKE
+from .const import DOMAIN, EVENT_AWAKE, PHASE_ASLEEP, PHASE_AWAKE
 
 if TYPE_CHECKING:
     from .coordinator import SleepTrackerCoordinator
-
-_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -68,11 +66,11 @@ class _SleepTrackerSensorBase(SensorEntity):
     ) -> None:
         self._coordinator = coordinator
         self._user_id = user_id
-        self._unsub: callable | None = None
+        self._unsub: Callable[[], None] | None = None
 
         config = coordinator.store.get_user_config(user_id)
         self._display_name = config.display_name if config else user_id[:8]
-        self._slug = self._display_name.lower().replace(" ", "_")
+        self._slug = slugify(self._display_name)
 
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, user_id)},
@@ -184,8 +182,7 @@ class SleepDurationSensor(_SleepTrackerSensorBase):
             self._user_id, limit=1
         )
         if history:
-            session_dict = self._coordinator._session_to_dict(history[0])
-            stats = session_dict.get("stats")
+            stats = self._coordinator.get_session_stats(history[0])
             if stats:
                 self._attr_native_value = stats["total_sleep_minutes"]
                 return
@@ -237,9 +234,8 @@ class AwakeCountSensor(_SleepTrackerSensorBase):
             session = history[0] if history else None
 
         if session:
-            # Count "awake" events excluding still_awake/fell_asleep
             count = sum(
-                1 for e in session.events if e.event_type == "awake"
+                1 for e in session.events if e.event_type == EVENT_AWAKE
             )
             self._attr_native_value = count
         else:

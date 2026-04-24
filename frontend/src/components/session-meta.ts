@@ -1,4 +1,4 @@
-import { LitElement, html, css, nothing } from "lit";
+import { LitElement, html, css, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { HomeAssistant, SleepSession, UserConfig } from "../types";
 import type { SleepTrackerApi } from "../api";
@@ -20,7 +20,7 @@ export class SessionMeta extends LitElement {
     return this.readonly || this.session?.status === "finalized";
   }
 
-  willUpdate(changed: Map<string, unknown>): void {
+  willUpdate(changed: PropertyValues): void {
     if (changed.has("session")) {
       this._noteValue = this.session?.note || "";
     }

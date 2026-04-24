@@ -22,8 +22,9 @@ export class AutomationInfoModal extends LitElement {
   }
 
   render() {
-    const friendly =
-      this.hass?.states?.[this.automationId ?? ""]?.attributes?.friendly_name;
+    const friendly = this.automationId
+      ? this.hass?.states[this.automationId]?.attributes?.friendly_name
+      : undefined;
     const triggerErr = this.automationTriggerId === "ERROR";
     const triggerDisplay = triggerErr
       ? "Unknown (trace lookup failed — HA internal API may have changed)"

@@ -11,30 +11,35 @@ import { state } from "lit/decorators.js";
 import type { HomeAssistant, UserState } from "./types";
 import { SleepTrackerApi } from "./api";
 import { tokens } from "./styles";
-import { formatTime, timeAgo, formatDuration } from "./utils";
+import { timeAgo, formatDuration } from "./utils";
 
 import "./components/timeline-bar";
 
+interface StatusCardConfig {
+  type?: string;
+}
+
 class SleepTrackerStatusCard extends LitElement {
-  @state() private _config: any = {};
+  @state() private _config: StatusCardConfig = {};
   @state() private _userState: UserState | null = null;
   @state() private _sending = false;
 
   private _hass?: HomeAssistant;
   private _api?: SleepTrackerApi;
   private _unsub?: () => void;
+  private _lastConnection?: HomeAssistant["connection"];
 
-  setConfig(config: any): void {
+  setConfig(config: StatusCardConfig): void {
     this._config = config;
   }
 
   set hass(hass: HomeAssistant) {
     this._hass = hass;
-    if (!this._api && hass) {
+    if (!hass) return;
+    if (this._lastConnection !== hass.connection) {
+      this._lastConnection = hass.connection;
       this._api = new SleepTrackerApi(hass);
       this._subscribe();
-    } else if (this._api && hass) {
-      this._api = new SleepTrackerApi(hass);
     }
     this.requestUpdate();
   }
@@ -305,11 +310,10 @@ class SleepTrackerStatusCard extends LitElement {
 
 customElements.define("sleep-tracker-status-card", SleepTrackerStatusCard);
 
-(window as any).customCards = (window as any).customCards || [];
-(window as any).customCards.push({
+window.customCards = window.customCards ?? [];
+window.customCards.push({
   type: "sleep-tracker-status-card",
   name: "Sleep Tracker Status",
-  description:
-    "Shows sleep status with start/stop and pulse controls",
+  description: "Shows sleep status with start/stop and pulse controls",
   preview: true,
 });

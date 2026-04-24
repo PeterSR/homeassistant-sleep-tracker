@@ -12,20 +12,34 @@ export class CustomEventsBar extends LitElement {
   @state() private _flashId: string | null = null;
   @state() private _busyId: string | null = null;
 
+  private _flashTimeoutId: number | null = null;
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback();
+    if (this._flashTimeoutId !== null) {
+      window.clearTimeout(this._flashTimeoutId);
+      this._flashTimeoutId = null;
+    }
+  }
+
   private async _fire(custom: CustomEventDef) {
     if (this._busyId) return;
     this._busyId = custom.id;
     try {
       await this.api.customEvent(custom.id);
       this.dispatchEvent(
-        new globalThis.CustomEvent("sleep-tracker-state-update", {
+        new CustomEvent("sleep-tracker-state-update", {
           bubbles: true,
           composed: true,
         })
       );
       this._flashId = custom.id;
-      setTimeout(() => {
+      if (this._flashTimeoutId !== null) {
+        window.clearTimeout(this._flashTimeoutId);
+      }
+      this._flashTimeoutId = window.setTimeout(() => {
         this._flashId = null;
+        this._flashTimeoutId = null;
       }, 600);
     } catch (err) {
       console.error("Custom event failed:", err);

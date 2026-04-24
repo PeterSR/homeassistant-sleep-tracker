@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 
@@ -16,8 +15,7 @@ from homeassistant.components.http import HomeAssistantView, StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-VERSION = json.loads((Path(__file__).parent / "manifest.json").read_text())["version"]
-from .const import DOMAIN
+from .const import DOMAIN, VERSION
 from .coordinator import SleepTrackerCoordinator
 from .services import async_setup_services, async_unload_services
 from .store import SleepTrackerStore

@@ -19,12 +19,20 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, NamedTuple
 
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    BUS_EVENT_EVENT,
+    BUS_EVENT_SESSION_ENDED,
+    BUS_EVENT_SESSION_FINALIZED,
+    BUS_EVENT_SESSION_PAUSED,
+    BUS_EVENT_SESSION_RESUMED,
+    BUS_EVENT_SESSION_STARTED,
+    DEFAULT_PANEL_SOURCE,
+    DOMAIN,
     EVENT_AWAKE,
     EVENT_CUSTOM,
-    EVENT_FELL_ASLEEP,
     EVENT_PAUSE,
     EVENT_RESUME,
     EVENT_STILL_AWAKE,
@@ -110,8 +118,20 @@ class SleepTrackerCoordinator:
     async def async_setup_user(
         self, user_id: str, display_name: str, **kwargs: Any
     ) -> dict:
-        """Set up sleep tracking for a user. Creates entities dynamically."""
+        """Set up sleep tracking for a user. Creates entities dynamically.
+
+        If the user is already set up, returns the existing config untouched —
+        callers should use `async_update_user_config` to change settings.
+        """
         from .models import UserConfig
+
+        display_name = display_name.strip()
+        if not display_name:
+            raise HomeAssistantError("display_name must be non-empty")
+
+        existing = self.store.get_user_config(user_id)
+        if existing is not None:
+            return existing.to_dict()
 
         if "checklist" in kwargs:
             kwargs["checklist"] = [
@@ -134,7 +154,7 @@ class SleepTrackerCoordinator:
         """Update user configuration."""
         config = self.store.get_user_config(user_id)
         if config is None:
-            raise ValueError(f"User {user_id} is not set up")
+            raise HomeAssistantError(f"User {user_id} is not set up")
 
         if "checklist" in kwargs:
             kwargs["checklist"] = [
@@ -147,14 +167,17 @@ class SleepTrackerCoordinator:
             )
 
         for key, value in kwargs.items():
-            if hasattr(config, key) and key != "user_id":
-                setattr(config, key, value)
+            if key == "user_id" or not hasattr(config, key):
+                raise HomeAssistantError(f"Unknown config key: {key}")
+            setattr(config, key, value)
 
         self.store.set_user_config(config)
         self._notify_listeners(user_id)
         return config.to_dict()
 
-    def _normalize_custom_events(self, raw: list[dict]) -> list[CustomEvent]:
+    def _normalize_custom_events(
+        self, raw: list[dict[str, Any]]
+    ) -> list[CustomEvent]:
         """Normalize incoming custom-event dicts: fill id, default label to tag."""
         result: list[CustomEvent] = []
         for entry in raw:
@@ -165,7 +188,7 @@ class SleepTrackerCoordinator:
                 if tag:
                     label = tag
                 else:
-                    raise ValueError("Custom event needs a label or a tag")
+                    raise HomeAssistantError("Custom event needs a label or a tag")
             entry_id = entry.get("id") or str(uuid.uuid4())
             result.append(CustomEvent(id=entry_id, label=label, icon=icon, tag=tag))
         return result
@@ -175,10 +198,10 @@ class SleepTrackerCoordinator:
         from .binary_sensor import create_user_binary_sensors
         from .sensor import create_user_sensors
 
-        add_sensors = self.hass.data.get("sleep_tracker", {}).get(
+        add_sensors = self.hass.data.get(DOMAIN, {}).get(
             "async_add_sensor_entities"
         )
-        add_binary = self.hass.data.get("sleep_tracker", {}).get(
+        add_binary = self.hass.data.get(DOMAIN, {}).get(
             "async_add_binary_sensor_entities"
         )
 
@@ -192,7 +215,7 @@ class SleepTrackerCoordinator:
     async def async_start_sleep(
         self,
         user_id: str,
-        source: str = "manual",
+        source: str,
         automation_id: str | None = None,
         automation_trigger_id: str | None = None,
     ) -> dict:
@@ -204,7 +227,7 @@ class SleepTrackerCoordinator:
         """
         config = self.store.get_user_config(user_id)
         if config is None:
-            raise ValueError(f"User {user_id} is not set up for sleep tracking")
+            raise HomeAssistantError(f"User {user_id} is not set up for sleep tracking")
 
         active = self.store.get_active_session(user_id)
         if active is not None:
@@ -214,7 +237,7 @@ class SleepTrackerCoordinator:
                     automation_id=automation_id,
                     automation_trigger_id=automation_trigger_id,
                 )
-            raise ValueError(
+            raise HomeAssistantError(
                 f"User {user_id} already has an active session: {active.session_id}"
             )
 
@@ -224,7 +247,7 @@ class SleepTrackerCoordinator:
         session = SleepSession(
             session_id=str(uuid.uuid4()),
             user_id=user_id,
-            started_at=dt_util.now().isoformat(),
+            started_at=dt_util.utcnow().isoformat(),
         )
         self.store.add_session(session)
 
@@ -234,7 +257,7 @@ class SleepTrackerCoordinator:
 
         self._notify_listeners(user_id)
         self.hass.bus.async_fire(
-            "sleep_tracker_session_started",
+            BUS_EVENT_SESSION_STARTED,
             {"user_id": user_id, "session_id": session.session_id},
         )
 
@@ -251,7 +274,7 @@ class SleepTrackerCoordinator:
     ) -> dict:
         """Resume a paused session. Records a resume event and clears paused_at."""
         event = SleepEvent(
-            timestamp=dt_util.now().isoformat(),
+            timestamp=dt_util.utcnow().isoformat(),
             event_type=EVENT_RESUME,
             source=source,
             automation_id=automation_id,
@@ -264,7 +287,7 @@ class SleepTrackerCoordinator:
 
         self._notify_listeners(user_id)
         self.hass.bus.async_fire(
-            "sleep_tracker_session_resumed",
+            BUS_EVENT_SESSION_RESUMED,
             {"user_id": user_id, "session_id": session.session_id},
         )
 
@@ -272,7 +295,7 @@ class SleepTrackerCoordinator:
         return self._session_to_dict(session)
 
     async def async_stop_sleep(
-        self, user_id: str, source: str = "manual"
+        self, user_id: str, source: str
     ) -> dict:
         """Stop the active sleep session.
 
@@ -281,16 +304,16 @@ class SleepTrackerCoordinator:
         """
         session = self.store.get_active_session(user_id)
         if session is None:
-            raise ValueError(f"User {user_id} has no active session")
+            raise HomeAssistantError(f"User {user_id} has no active session")
 
-        ended_at = dt_util.now().isoformat()
+        ended_at = dt_util.utcnow().isoformat()
         self.store.update_session(
             session.session_id, ended_at=ended_at, paused_at=None
         )
 
         self._notify_listeners(user_id)
         self.hass.bus.async_fire(
-            "sleep_tracker_session_ended",
+            BUS_EVENT_SESSION_ENDED,
             {"user_id": user_id, "session_id": session.session_id},
         )
 
@@ -306,18 +329,18 @@ class SleepTrackerCoordinator:
     async def async_pause_sleep(
         self,
         user_id: str,
-        source: str = "manual",
+        source: str,
         automation_id: str | None = None,
         automation_trigger_id: str | None = None,
     ) -> dict:
         """Pause the active session — marks user as awake until resumed."""
         session = self.store.get_active_session(user_id)
         if session is None:
-            raise ValueError(f"User {user_id} has no active session")
+            raise HomeAssistantError(f"User {user_id} has no active session")
         if session.paused_at is not None:
-            raise ValueError("Session is already paused")
+            raise HomeAssistantError("Session is already paused")
 
-        now = dt_util.now()
+        now = dt_util.utcnow()
         event = SleepEvent(
             timestamp=now.isoformat(),
             event_type=EVENT_PAUSE,
@@ -334,7 +357,7 @@ class SleepTrackerCoordinator:
 
         self._notify_listeners(user_id)
         self.hass.bus.async_fire(
-            "sleep_tracker_session_paused",
+            BUS_EVENT_SESSION_PAUSED,
             {"user_id": user_id, "session_id": session.session_id},
         )
 
@@ -349,27 +372,30 @@ class SleepTrackerCoordinator:
         """
         session = self.store.get_session(session_id)
         if session is None or session.user_id != user_id:
-            raise ValueError("Session not found")
+            raise HomeAssistantError("Session not found")
         if session.is_active:
-            raise ValueError("Session is already active")
+            raise HomeAssistantError("Session is already active")
         if session.finalized:
-            raise ValueError("Cannot reopen a finalized session")
+            raise HomeAssistantError("Cannot reopen a finalized session")
 
         # Block reopen if there's already an active session for this user
         active = self.store.get_active_session(user_id)
         if active is not None:
-            raise ValueError(
+            raise HomeAssistantError(
                 f"User {user_id} already has an active session: {active.session_id}"
             )
 
         # Block reopen if there's a newer session (would violate chronological order)
+        session_started = datetime.fromisoformat(session.started_at)
         for other in self.store.sessions.values():
-            if (
-                other.user_id == user_id
-                and other.session_id != session_id
-                and other.started_at > session.started_at
-            ):
-                raise ValueError("Cannot resume: a newer session exists")
+            if other.user_id != user_id or other.session_id == session_id:
+                continue
+            try:
+                other_started = datetime.fromisoformat(other.started_at)
+            except ValueError:
+                continue
+            if other_started > session_started:
+                raise HomeAssistantError("Cannot resume: a newer session exists")
 
         self.store.update_session(session_id, ended_at=None, phases=None)
         # Clear any phase edit history for this session
@@ -383,7 +409,7 @@ class SleepTrackerCoordinator:
         self,
         user_id: str,
         event_type: str,
-        source: str = "manual",
+        source: str,
         automation_id: str | None = None,
         automation_trigger_id: str | None = None,
     ) -> dict:
@@ -397,17 +423,17 @@ class SleepTrackerCoordinator:
         Stopped sessions reject events.
         """
         if event_type not in USER_EVENT_TYPES:
-            raise ValueError(f"Invalid event type: {event_type}")
+            raise HomeAssistantError(f"Invalid event type: {event_type}")
 
         session = self.store.get_active_session(user_id)
         if session is None:
-            raise ValueError(
+            raise HomeAssistantError(
                 f"User {user_id} has no active session — events are rejected on stopped sessions"
             )
         if session.paused_at is not None:
-            raise ValueError("Cannot record events while session is paused")
+            raise HomeAssistantError("Cannot record events while session is paused")
 
-        now = dt_util.now()
+        now = dt_util.utcnow()
 
         # Auto-demote awake -> still_awake when currently awake OR within the
         # awakening-grace window after the latency-based fall-asleep.
@@ -443,7 +469,7 @@ class SleepTrackerCoordinator:
 
         self._notify_listeners(user_id)
         self.hass.bus.async_fire(
-            "sleep_tracker_event",
+            BUS_EVENT_EVENT,
             {
                 "user_id": user_id,
                 "session_id": session.session_id,
@@ -462,7 +488,7 @@ class SleepTrackerCoordinator:
         self,
         user_id: str,
         custom_event_id: str,
-        source: str = "manual",
+        source: str,
         automation_id: str | None = None,
         automation_trigger_id: str | None = None,
     ) -> dict:
@@ -475,21 +501,21 @@ class SleepTrackerCoordinator:
         """
         config = self.store.get_user_config(user_id)
         if config is None:
-            raise ValueError(f"User {user_id} is not set up")
+            raise HomeAssistantError(f"User {user_id} is not set up")
 
         custom = next(
             (c for c in config.custom_events if c.id == custom_event_id), None
         )
         if custom is None:
-            raise ValueError(f"Unknown custom event: {custom_event_id}")
+            raise HomeAssistantError(f"Unknown custom event: {custom_event_id}")
 
         session = self.store.get_active_session(user_id)
         if session is None:
-            raise ValueError(
+            raise HomeAssistantError(
                 f"User {user_id} has no active session — events are rejected on stopped sessions"
             )
 
-        now = dt_util.now()
+        now = dt_util.utcnow()
         event = SleepEvent(
             timestamp=now.isoformat(),
             event_type=EVENT_CUSTOM,
@@ -518,7 +544,7 @@ class SleepTrackerCoordinator:
 
         self._notify_listeners(user_id)
         self.hass.bus.async_fire(
-            "sleep_tracker_event",
+            BUS_EVENT_EVENT,
             {
                 "user_id": user_id,
                 "session_id": session.session_id,
@@ -551,7 +577,7 @@ class SleepTrackerCoordinator:
             None,
             session.events,
             **params,
-            now=dt_util.now(),
+            now=dt_util.utcnow(),
         )
         if phases and phases[-1].state == PHASE_ASLEEP:
             return PHASE_ASLEEP
@@ -568,11 +594,11 @@ class SleepTrackerCoordinator:
         """
         session = self.store.get_session(session_id)
         if session is None or session.user_id != user_id:
-            raise ValueError("Session not found")
+            raise HomeAssistantError("Session not found")
         if session.is_active:
-            raise ValueError("Cannot complete an active session — stop it first")
+            raise HomeAssistantError("Cannot complete an active session — stop it first")
         if session.phases is not None:
-            raise ValueError("Session already has materialized phases")
+            raise HomeAssistantError("Session already has materialized phases")
 
         params = self._get_user_timeline_params(user_id)
         materialized = materialize_phases(
@@ -598,13 +624,13 @@ class SleepTrackerCoordinator:
         """Get a session whose events can be edited (stopped, no phases, not finalized)."""
         session = self.store.get_session(session_id)
         if session is None or session.user_id != user_id:
-            raise ValueError("Session not found")
+            raise HomeAssistantError("Session not found")
         if session.is_active:
-            raise ValueError("Cannot edit events on an active session")
+            raise HomeAssistantError("Cannot edit events on an active session")
         if session.phases is not None:
-            raise ValueError("Events are locked after phase materialization")
+            raise HomeAssistantError("Events are locked after phase materialization")
         if session.finalized:
-            raise ValueError("Cannot edit a finalized session")
+            raise HomeAssistantError("Cannot edit a finalized session")
         return session
 
     async def async_edit_event(
@@ -612,13 +638,13 @@ class SleepTrackerCoordinator:
     ) -> dict:
         """Change the type of an event during event review."""
         if new_event_type not in USER_EVENT_TYPES:
-            raise ValueError(f"Invalid event type: {new_event_type}")
+            raise HomeAssistantError(f"Invalid event type: {new_event_type}")
         session = self._get_event_editable_session(user_id, session_id)
         if event_index < 0 or event_index >= len(session.events):
-            raise ValueError(f"Invalid event index: {event_index}")
+            raise HomeAssistantError(f"Invalid event index: {event_index}")
         # Don't allow editing pause/resume events
         if session.events[event_index].event_type in (EVENT_PAUSE, EVENT_RESUME):
-            raise ValueError("Cannot edit pause/resume events")
+            raise HomeAssistantError("Cannot edit pause/resume events")
 
         session.events[event_index].event_type = new_event_type
         self.store.update_session(session_id, events=session.events)
@@ -631,7 +657,7 @@ class SleepTrackerCoordinator:
         """Delete an event during event review."""
         session = self._get_event_editable_session(user_id, session_id)
         if event_index < 0 or event_index >= len(session.events):
-            raise ValueError(f"Invalid event index: {event_index}")
+            raise HomeAssistantError(f"Invalid event index: {event_index}")
 
         session.events.pop(event_index)
         self.store.update_session(session_id, events=session.events)
@@ -644,7 +670,7 @@ class SleepTrackerCoordinator:
         """Delete any session (active, stopped, finalized)."""
         session = self.store.get_session(session_id)
         if session is None or session.user_id != user_id:
-            raise ValueError("Session not found")
+            raise HomeAssistantError("Session not found")
 
         self._edit_history.pop(session_id, None)
         self.store.delete_session(session_id)
@@ -663,9 +689,9 @@ class SleepTrackerCoordinator:
         """
         session = self.store.get_session(session_id)
         if session is None or session.user_id != user_id:
-            raise ValueError("Session not found")
+            raise HomeAssistantError("Session not found")
         if session.finalized:
-            raise ValueError("Cannot edit a finalized session")
+            raise HomeAssistantError("Cannot edit a finalized session")
 
         allowed = {"note", "rating_quality", "rating_feeling", "tags"}
         updates = {}
@@ -674,7 +700,7 @@ class SleepTrackerCoordinator:
                 continue
             if key in ("rating_quality", "rating_feeling"):
                 if value is not None and (not isinstance(value, int) or value < 1 or value > 5):
-                    raise ValueError(f"{key} must be 1-5 or null")
+                    raise HomeAssistantError(f"{key} must be 1-5 or null")
             updates[key] = value
 
         if updates:
@@ -720,13 +746,13 @@ class SleepTrackerCoordinator:
         """Get a session that can be edited (stopped, not finalized, owned)."""
         session = self.store.get_session(session_id)
         if session is None or session.user_id != user_id:
-            raise ValueError("Session not found")
+            raise HomeAssistantError("Session not found")
         if session.is_active:
-            raise ValueError("Cannot edit an active session")
+            raise HomeAssistantError("Cannot edit an active session")
         if session.finalized:
-            raise ValueError("Cannot edit a finalized session")
+            raise HomeAssistantError("Cannot edit a finalized session")
         if session.phases is None:
-            raise ValueError("Session has no materialized phases")
+            raise HomeAssistantError("Session has no materialized phases")
         return session
 
     async def async_delete_phase(
@@ -814,7 +840,7 @@ class SleepTrackerCoordinator:
         session = self._get_editable_session(user_id, session_id)
         history = self._edit_history.get(session_id, [])
         if not history:
-            raise ValueError("Nothing to undo")
+            raise HomeAssistantError("Nothing to undo")
 
         snapshot = history.pop()
         self.store.update_session(
@@ -835,11 +861,11 @@ class SleepTrackerCoordinator:
         """Finalize a session: mark as final, export if configured."""
         session = self.store.get_session(session_id)
         if session is None or session.user_id != user_id:
-            raise ValueError("Session not found")
+            raise HomeAssistantError("Session not found")
         if session.is_active:
-            raise ValueError("Cannot finalize an active session")
+            raise HomeAssistantError("Cannot finalize an active session")
         if session.finalized:
-            raise ValueError("Session is already finalized")
+            raise HomeAssistantError("Session is already finalized")
 
         self.store.update_session(session_id, finalized=True)
         self._edit_history.pop(session_id, None)
@@ -855,7 +881,7 @@ class SleepTrackerCoordinator:
 
         self._notify_listeners(user_id)
         self.hass.bus.async_fire(
-            "sleep_tracker_session_finalized",
+            BUS_EVENT_SESSION_FINALIZED,
             {"user_id": user_id, "session_id": session_id},
         )
         return self._session_to_dict(session)
@@ -866,9 +892,9 @@ class SleepTrackerCoordinator:
         """Unfinalize a session — escape hatch to edit metadata/phases again."""
         session = self.store.get_session(session_id)
         if session is None or session.user_id != user_id:
-            raise ValueError("Session not found")
+            raise HomeAssistantError("Session not found")
         if not session.finalized:
-            raise ValueError("Session is not finalized")
+            raise HomeAssistantError("Session is not finalized")
 
         self.store.update_session(session_id, finalized=False)
         self._notify_listeners(user_id)
@@ -948,7 +974,7 @@ class SleepTrackerCoordinator:
         return {
             "sessions": [self._session_to_dict(s) for s in sessions],
             "count": len(sessions),
-            "exported_at": dt_util.now().isoformat(),
+            "exported_at": dt_util.utcnow().isoformat(),
         }
 
     def get_session_detail(self, session_id: str) -> dict | None:
@@ -962,7 +988,7 @@ class SleepTrackerCoordinator:
 
     def get_user_stats(self, user_id: str, days: int = 30) -> dict:
         """Get aggregated sleep statistics over a period."""
-        cutoff_dt = dt_util.now() - timedelta(days=days)
+        cutoff_dt = dt_util.utcnow() - timedelta(days=days)
 
         sessions: list[SleepSession] = []
         for s in self.store.sessions.values():
@@ -971,6 +997,10 @@ class SleepTrackerCoordinator:
             try:
                 started = datetime.fromisoformat(s.started_at)
             except ValueError:
+                _LOGGER.debug(
+                    "Skipping session %s: unparseable started_at %r",
+                    s.session_id, s.started_at,
+                )
                 continue
             if started.tzinfo is None:
                 started = started.replace(tzinfo=cutoff_dt.tzinfo)
@@ -1049,8 +1079,6 @@ class SleepTrackerCoordinator:
 
         result = session.to_dict()
         result["status"] = session.status
-        # Always include phases in the response (even if not stored), so the
-        # frontend has a single rendering path.
         result["phases"] = [p.to_dict() for p in phases]
         result["undo_count"] = self.get_edit_history_count(session.session_id)
 
@@ -1062,3 +1090,19 @@ class SleepTrackerCoordinator:
             result["stats"] = None
 
         return result
+
+    def get_session_stats(self, session: SleepSession) -> dict | None:
+        """Public helper for entities: return stats for a session, or None if active."""
+        if session.ended_at is None:
+            return None
+        if session.phases is not None:
+            phases = session.phases
+        else:
+            params = self._get_user_timeline_params(session.user_id)
+            phases = materialize_phases(
+                session.started_at,
+                session.ended_at,
+                session.events,
+                **params,
+            )
+        return compute_stats(phases, session.started_at, session.ended_at)
