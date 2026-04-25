@@ -954,10 +954,10 @@ export class NightDetailView extends LitElement {
         border-left: 4px solid var(--divider-color, #e0e0e0);
       }
       .phase-item.asleep {
-        border-left-color: var(--sleep-color-asleep, #42a5f5);
+        border-left-color: var(--sleep-color-asleep, #0072B2);
       }
       .phase-item.awake {
-        border-left-color: var(--sleep-color-awake, #ef5350);
+        border-left-color: var(--sleep-color-awake, #D55E00);
       }
       .phase-row {
         display: flex;
@@ -975,10 +975,10 @@ export class NightDetailView extends LitElement {
         text-align: center;
       }
       .phase-state.asleep {
-        background: var(--sleep-color-asleep, #42a5f5);
+        background: var(--sleep-color-asleep, #0072B2);
       }
       .phase-state.awake {
-        background: var(--sleep-color-awake, #ef5350);
+        background: var(--sleep-color-awake, #D55E00);
       }
       .phase-times {
         font-size: var(--ha-font-size-m, 14px);
@@ -1007,7 +1007,7 @@ export class NightDetailView extends LitElement {
         color: var(--primary-text-color);
       }
       .phase-action.delete:hover {
-        background: var(--sleep-color-awake, #ef5350);
+        background: var(--sleep-color-awake, #D55E00);
         color: white;
       }
       .phase-action:disabled {
@@ -1059,7 +1059,7 @@ export class NightDetailView extends LitElement {
         --mdc-icon-size: 18px;
       }
       .edit-action.save {
-        background: var(--sleep-color-success, #66bb6a);
+        background: var(--sleep-color-success, #009E73);
         color: white;
       }
       .edit-action.cancel {
@@ -1104,20 +1104,20 @@ export class NightDetailView extends LitElement {
         text-align: center;
       }
       .event-type.awake {
-        background: var(--sleep-color-event-wake, #c2185b);
+        background: var(--sleep-color-event-wake, #CC79A7);
       }
       .event-type.still_awake {
-        background: var(--sleep-color-pulse, #ff9800);
+        background: var(--sleep-color-pulse, #E69F00);
       }
       .event-type.fell_asleep {
-        background: var(--sleep-color-asleep, #42a5f5);
+        background: var(--sleep-color-asleep, #0072B2);
       }
       .event-type.pause,
       .event-type.resume {
         background: var(--secondary-text-color);
       }
       .event-type.custom {
-        background: var(--sleep-color-pulse, #ff9800);
+        background: var(--sleep-color-pulse, #E69F00);
       }
       .event-time {
         flex: 1;
@@ -1143,8 +1143,8 @@ export class NightDetailView extends LitElement {
         background: var(--divider-color, #e0e0e0);
       }
       .automation-chip.err {
-        color: var(--sleep-color-awake, #ef5350);
-        border-color: var(--sleep-color-awake, #ef5350);
+        color: var(--sleep-color-awake, #D55E00);
+        border-color: var(--sleep-color-awake, #D55E00);
       }
 
       .empty-text {
@@ -1191,7 +1191,7 @@ export class NightDetailView extends LitElement {
       }
       .finalize-btn {
         padding: var(--ha-space-3, 12px) var(--ha-space-8, 32px);
-        background: var(--sleep-color-success, #66bb6a);
+        background: var(--sleep-color-success, #009E73);
         color: white;
         border: none;
         border-radius: var(--ha-border-radius-md, 8px);
@@ -1235,7 +1235,7 @@ export class NightDetailView extends LitElement {
         color: var(--primary-color, #03a9f4);
       }
       .minor-btn.danger:hover {
-        color: var(--sleep-color-awake, #ef5350);
+        color: var(--sleep-color-awake, #D55E00);
       }
       .minor-btn:disabled {
         opacity: 0.5;
@@ -1299,7 +1299,7 @@ export class NightDetailView extends LitElement {
       }
       .confirm-delete {
         padding: var(--ha-space-2, 8px) var(--ha-space-4, 16px);
-        background: var(--sleep-color-awake, #ef5350);
+        background: var(--sleep-color-awake, #D55E00);
         color: white;
         border: none;
         border-radius: var(--ha-border-radius-md, 8px);

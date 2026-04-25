@@ -102,10 +102,10 @@ export class TimelineBar extends LitElement {
         transition: width 0.3s ease;
       }
       .segment.asleep {
-        background: var(--sleep-color-asleep, #42a5f5);
+        background: var(--sleep-color-asleep, #0072B2);
       }
       .segment.awake {
-        background: var(--sleep-color-awake, #ef5350);
+        background: var(--sleep-color-awake, #D55E00);
         opacity: 0.7;
       }
       .event-marker {
@@ -117,17 +117,17 @@ export class TimelineBar extends LitElement {
         z-index: 1;
       }
       .event-marker.awake {
-        background: var(--sleep-color-event-wake, #c2185b);
+        background: var(--sleep-color-event-wake, #CC79A7);
       }
       .event-marker.still_awake {
-        background: var(--sleep-color-pulse, #ff9800);
+        background: var(--sleep-color-pulse, #E69F00);
         opacity: 0.7;
       }
       .event-marker.fell_asleep {
-        background: var(--sleep-color-asleep, #42a5f5);
+        background: var(--sleep-color-asleep, #0072B2);
       }
       .event-marker.custom {
-        background: var(--sleep-color-pulse, #ff9800);
+        background: var(--sleep-color-pulse, #E69F00);
       }
       .now-marker {
         position: absolute;

@@ -16,11 +16,11 @@ export const checklistItemStyles = css`
     background: var(--secondary-background-color, #f5f5f5);
   }
   .checklist-card.ok {
-    border-color: var(--sleep-color-success, #66bb6a);
+    border-color: var(--sleep-color-success, #009E73);
     background: rgba(102, 187, 106, 0.08);
   }
   .checklist-card.warn {
-    border-color: var(--sleep-color-awake, #ef5350);
+    border-color: var(--sleep-color-awake, #D55E00);
     background: rgba(239, 83, 80, 0.08);
   }
   .checklist-card.unavailable {
@@ -43,10 +43,10 @@ export const checklistItemStyles = css`
     cursor: default;
   }
   .checklist-card.warn .check {
-    accent-color: var(--sleep-color-awake, #ef5350);
+    accent-color: var(--sleep-color-awake, #D55E00);
   }
   .checklist-card.ok .check {
-    accent-color: var(--sleep-color-success, #66bb6a);
+    accent-color: var(--sleep-color-success, #009E73);
   }
   .tile-name {
     flex: 1;

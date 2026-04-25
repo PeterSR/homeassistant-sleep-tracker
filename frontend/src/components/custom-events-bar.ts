@@ -89,9 +89,9 @@ export class CustomEventsBar extends LitElement {
         cursor: not-allowed;
       }
       .pulse-btn.flashed {
-        background: var(--sleep-color-success, #66bb6a);
+        background: var(--sleep-color-success, #009E73);
         color: white;
-        border-color: var(--sleep-color-success, #66bb6a);
+        border-color: var(--sleep-color-success, #009E73);
         transition: background 0.15s;
       }
       ha-icon {

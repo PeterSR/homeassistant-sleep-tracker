@@ -128,7 +128,7 @@ export class AutomationInfoModal extends LitElement {
         word-break: break-all;
       }
       dd.error {
-        color: var(--sleep-color-awake, #ef5350);
+        color: var(--sleep-color-awake, #D55E00);
         display: flex;
         align-items: flex-start;
         gap: var(--ha-space-1, 4px);

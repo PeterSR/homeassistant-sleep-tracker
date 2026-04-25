@@ -306,11 +306,11 @@ export class MainView extends LitElement {
       }
       .sleeping-icon {
         --mdc-icon-size: 40px;
-        color: var(--sleep-color-asleep, #42a5f5);
+        color: var(--sleep-color-asleep, #0072B2);
       }
       .paused-icon {
         --mdc-icon-size: 40px;
-        color: var(--sleep-color-pulse, #ff9800);
+        color: var(--sleep-color-pulse, #E69F00);
       }
       .status {
         font-size: var(--ha-font-size-xl, 20px);

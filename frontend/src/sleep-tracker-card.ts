@@ -257,7 +257,7 @@ class SleepTrackerStatusCard extends LitElement {
         font-size: var(--ha-font-size-l, 16px);
       }
       .status.sleeping {
-        color: var(--sleep-color-asleep, #42a5f5);
+        color: var(--sleep-color-asleep, #0072B2);
       }
       .status.awake {
         color: var(--primary-text-color);
@@ -292,14 +292,14 @@ class SleepTrackerStatusCard extends LitElement {
         cursor: not-allowed;
       }
       .action-btn.start {
-        background: var(--sleep-color-asleep, #42a5f5);
+        background: var(--sleep-color-asleep, #0072B2);
         color: white;
-        border-color: var(--sleep-color-asleep, #42a5f5);
+        border-color: var(--sleep-color-asleep, #0072B2);
       }
       .action-btn.stop {
-        background: var(--sleep-color-awake, #ef5350);
+        background: var(--sleep-color-awake, #D55E00);
         color: white;
-        border-color: var(--sleep-color-awake, #ef5350);
+        border-color: var(--sleep-color-awake, #D55E00);
       }
       .action-btn ha-icon {
         --mdc-icon-size: 18px;

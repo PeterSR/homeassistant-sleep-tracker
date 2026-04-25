@@ -2,12 +2,12 @@ import { css } from "lit";
 
 export const tokens = css`
   :host {
-    --sleep-color-awake: #ef5350;
-    --sleep-color-asleep: #42a5f5;
-    --sleep-color-deep-sleep: #1565c0;
-    --sleep-color-pulse: #ff9800;
-    --sleep-color-event-wake: #c2185b;
-    --sleep-color-success: #66bb6a;
+    --sleep-color-awake: #D55E00;
+    --sleep-color-asleep: #0072B2;
+    --sleep-color-deep-sleep: #004C77;
+    --sleep-color-pulse: #E69F00;
+    --sleep-color-event-wake: #CC79A7;
+    --sleep-color-success: #009E73;
   }
 `;
 
@@ -77,15 +77,15 @@ export const buttonStyles = css`
     opacity: 0.85;
   }
   .big-button.start {
-    background: var(--sleep-color-asleep, #42a5f5);
+    background: var(--sleep-color-asleep, #0072B2);
     color: white;
   }
   .big-button.stop {
-    background: var(--sleep-color-awake, #ef5350);
+    background: var(--sleep-color-awake, #D55E00);
     color: white;
   }
   .big-button.pause {
-    background: var(--sleep-color-pulse, #ff9800);
+    background: var(--sleep-color-pulse, #E69F00);
     color: white;
   }
   .pulse-buttons {

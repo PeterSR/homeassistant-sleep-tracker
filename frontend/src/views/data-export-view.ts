@@ -147,12 +147,12 @@ export class DataExportView extends LitElement {
       .result {
         margin-top: var(--ha-space-2, 8px);
         font-size: var(--ha-font-size-s, 12px);
-        color: var(--sleep-color-success, #66bb6a);
+        color: var(--sleep-color-success, #009E73);
       }
       .error {
         margin-top: var(--ha-space-2, 8px);
         font-size: var(--ha-font-size-s, 12px);
-        color: var(--sleep-color-awake, #ef5350);
+        color: var(--sleep-color-awake, #D55E00);
       }
     `,
   ];

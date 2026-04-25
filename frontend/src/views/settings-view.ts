@@ -1477,7 +1477,7 @@ data:
         flex-shrink: 0;
       }
       .remove-btn:hover {
-        color: var(--sleep-color-awake, #ef5350);
+        color: var(--sleep-color-awake, #D55E00);
         background: rgba(239, 83, 80, 0.1);
       }
       .remove-btn ha-icon {

@@ -370,7 +370,7 @@ export class EventReviewView extends LitElement {
       .complete-btn {
         width: 100%;
         padding: var(--ha-space-4, 16px);
-        background: var(--sleep-color-success, #66bb6a);
+        background: var(--sleep-color-success, #009E73);
         color: white;
         border: none;
         border-radius: var(--ha-border-radius-lg, 12px);
@@ -427,13 +427,13 @@ export class EventReviewView extends LitElement {
         outline-color: var(--primary-color, #03a9f4);
       }
       .event-type.awake {
-        background: var(--sleep-color-event-wake, #c2185b);
+        background: var(--sleep-color-event-wake, #CC79A7);
       }
       .event-type.still_awake {
-        background: var(--sleep-color-pulse, #ff9800);
+        background: var(--sleep-color-pulse, #E69F00);
       }
       .event-type.fell_asleep {
-        background: var(--sleep-color-asleep, #42a5f5);
+        background: var(--sleep-color-asleep, #0072B2);
       }
       .event-type.pause {
         background: var(--secondary-text-color);
@@ -442,7 +442,7 @@ export class EventReviewView extends LitElement {
         background: var(--secondary-text-color);
       }
       .event-type.custom {
-        background: var(--sleep-color-pulse, #ff9800);
+        background: var(--sleep-color-pulse, #E69F00);
       }
       .event-time {
         flex: 1;
@@ -470,8 +470,8 @@ export class EventReviewView extends LitElement {
         background: var(--divider-color, #e0e0e0);
       }
       .automation-chip.err {
-        color: var(--sleep-color-awake, #ef5350);
-        border-color: var(--sleep-color-awake, #ef5350);
+        color: var(--sleep-color-awake, #D55E00);
+        border-color: var(--sleep-color-awake, #D55E00);
       }
       .event-delete {
         display: flex;
@@ -488,7 +488,7 @@ export class EventReviewView extends LitElement {
         --mdc-icon-size: 16px;
       }
       .event-delete:hover {
-        background: var(--sleep-color-awake, #ef5350);
+        background: var(--sleep-color-awake, #D55E00);
         color: white;
       }
       .event-delete:disabled {
@@ -545,7 +545,7 @@ export class EventReviewView extends LitElement {
         --mdc-icon-size: 16px;
       }
       .delete-session-btn:hover {
-        color: var(--sleep-color-awake, #ef5350);
+        color: var(--sleep-color-awake, #D55E00);
       }
       .confirm-overlay {
         position: fixed;
@@ -592,7 +592,7 @@ export class EventReviewView extends LitElement {
       }
       .confirm-delete {
         padding: var(--ha-space-2, 8px) var(--ha-space-4, 16px);
-        background: var(--sleep-color-awake, #ef5350);
+        background: var(--sleep-color-awake, #D55E00);
         color: white;
         border: none;
         border-radius: var(--ha-border-radius-md, 8px);

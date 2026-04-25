@@ -73,7 +73,7 @@ export class NightStats extends LitElement {
         margin-top: 2px;
       }
       .stat-goal.met {
-        color: var(--sleep-color-success, #66bb6a);
+        color: var(--sleep-color-success, #009E73);
       }
       .stat-goal.unmet {
         color: var(--secondary-text-color);

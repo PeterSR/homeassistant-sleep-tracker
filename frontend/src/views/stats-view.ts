@@ -307,16 +307,16 @@ export class StatsView extends LitElement {
       }
       .chart-bar {
         height: 100%;
-        background: var(--sleep-color-asleep, #42a5f5);
+        background: var(--sleep-color-asleep, #0072B2);
         border-radius: 3px;
         transition: width 0.3s ease;
         min-width: 2px;
       }
       .chart-bar.efficiency {
-        background: var(--sleep-color-success, #66bb6a);
+        background: var(--sleep-color-success, #009E73);
       }
       .chart-bar.awakenings {
-        background: var(--sleep-color-awake, #ef5350);
+        background: var(--sleep-color-awake, #D55E00);
       }
       .chart-value {
         width: 40px;

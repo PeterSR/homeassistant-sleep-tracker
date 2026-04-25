@@ -116,7 +116,7 @@ export class SessionCard extends LitElement {
         --mdc-icon-size: 14px;
       }
       .goal-icon.met {
-        color: var(--sleep-color-success, #66bb6a);
+        color: var(--sleep-color-success, #009E73);
       }
       .goal-icon.unmet {
         color: var(--secondary-text-color);
@@ -129,7 +129,7 @@ export class SessionCard extends LitElement {
         color: var(--secondary-text-color);
       }
       .meta-rating {
-        color: var(--sleep-color-pulse, #ff9800);
+        color: var(--sleep-color-pulse, #E69F00);
         letter-spacing: 1px;
       }
       .meta-tags {
