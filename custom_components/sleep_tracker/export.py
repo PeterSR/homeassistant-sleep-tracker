@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 import logging
 from typing import TYPE_CHECKING
 
@@ -11,6 +12,7 @@ import aiohttp
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
+from .history_helper import async_get_state_history
 from .phases import compute_stats, materialize_phases
 
 if TYPE_CHECKING:
@@ -67,6 +69,23 @@ async def async_export_session(
         "rating_feeling": session.rating_feeling,
         "tags": session.tags,
     }
+
+    if (
+        config.export_environment_data
+        and config.environment_entities
+        and session.ended_at
+    ):
+        try:
+            start_dt = datetime.fromisoformat(session.started_at)
+            end_dt = datetime.fromisoformat(session.ended_at)
+            payload["environment_history"] = await async_get_state_history(
+                hass, config.environment_entities, start_dt, end_dt
+            )
+        except Exception:  # noqa: BLE001 — never fail export over missing history
+            _LOGGER.exception(
+                "Failed to fetch environment history for session %s", session_id
+            )
+            payload["environment_history"] = {}
 
     client = async_get_clientsession(hass)
     headers = {"Content-Type": "application/json"}

@@ -90,6 +90,7 @@ class UserConfig:
     skip_phase_review: bool = False
     export_url: str | None = None
     export_headers: dict[str, str] = field(default_factory=dict)
+    export_environment_data: bool = False
     retention_days: int = 90
     checklist: list[ChecklistItem] = field(default_factory=list)
     show_note: bool = True
@@ -114,6 +115,7 @@ class UserConfig:
             "skip_phase_review": self.skip_phase_review,
             "export_url": self.export_url,
             "export_headers": self.export_headers,
+            "export_environment_data": self.export_environment_data,
             "retention_days": self.retention_days,
             "checklist": [item.to_dict() for item in self.checklist],
             "show_note": self.show_note,
@@ -140,6 +142,7 @@ class UserConfig:
             skip_phase_review=data.get("skip_phase_review", False),
             export_url=data.get("export_url"),
             export_headers=data.get("export_headers", {}),
+            export_environment_data=data.get("export_environment_data", False),
             retention_days=data.get("retention_days", 90),
             checklist=[
                 ChecklistItem.from_dict(item) for item in data.get("checklist", [])

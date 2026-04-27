@@ -13,6 +13,7 @@ export class DataExportView extends LitElement {
 
   @state() private _startDate = "";
   @state() private _endDate = "";
+  @state() private _includeEnvironment = false;
   @state() private _exporting = false;
   @state() private _lastCount: number | null = null;
   @state() private _error: string | null = null;
@@ -35,7 +36,11 @@ export class DataExportView extends LitElement {
     try {
       const start = this._startDate ? `${this._startDate}T00:00:00` : null;
       const end = this._endDate ? `${this._endDate}T23:59:59` : null;
-      const data = await this.api.exportData(start, end);
+      const data = await this.api.exportData(
+        start,
+        end,
+        this._includeEnvironment
+      );
       this._lastCount = data.count;
 
       const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -90,6 +95,23 @@ export class DataExportView extends LitElement {
                 }}
               />
             </div>
+
+            <label class="checkbox-row">
+              <input
+                type="checkbox"
+                .checked=${this._includeEnvironment}
+                @change=${(e: Event) => {
+                  this._includeEnvironment = (e.target as HTMLInputElement).checked;
+                }}
+              />
+              <span>
+                Include environment time series
+                <span class="checkbox-hint">
+                  Attaches recorder history of your configured environment
+                  entities, scoped to each session window.
+                </span>
+              </span>
+            </label>
 
             <button
               class="save-btn"
@@ -153,6 +175,22 @@ export class DataExportView extends LitElement {
         margin-top: var(--ha-space-2, 8px);
         font-size: var(--ha-font-size-s, 12px);
         color: var(--sleep-color-awake, #D55E00);
+      }
+      .checkbox-row {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--ha-space-2, 8px);
+        font-size: var(--ha-font-size-m, 14px);
+        cursor: pointer;
+      }
+      .checkbox-row input[type="checkbox"] {
+        margin-top: 2px;
+      }
+      .checkbox-hint {
+        display: block;
+        font-size: var(--ha-font-size-s, 12px);
+        color: var(--secondary-text-color);
+        margin-top: 2px;
       }
     `,
   ];

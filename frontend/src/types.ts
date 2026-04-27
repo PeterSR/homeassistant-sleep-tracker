@@ -125,6 +125,7 @@ export interface UserConfig {
   skip_phase_review: boolean;
   export_url: string | null;
   export_headers: Record<string, string>;
+  export_environment_data: boolean;
   retention_days: number;
   checklist: ChecklistItem[];
   show_note: boolean;

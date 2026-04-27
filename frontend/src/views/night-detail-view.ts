@@ -16,6 +16,7 @@ import "../components/timeline-bar";
 import "../components/night-stats";
 import "../components/session-meta";
 import "../components/automation-info-modal";
+import "../components/environment-chart";
 
 type BoundaryEdit = { afterIndex: number };
 
@@ -214,6 +215,8 @@ export class NightDetailView extends LitElement {
     if (!config?.show_environment || !config.environment_entities?.length) {
       return nothing;
     }
+    const session = this._session;
+    if (!session) return nothing;
 
     return html`
       <div class="section">
@@ -228,6 +231,17 @@ export class NightDetailView extends LitElement {
                   <span class="env-name">${entityId}</span>
                   <span class="env-state">Unavailable</span>
                 </div>
+              `;
+            }
+            const isNumeric = !Number.isNaN(parseFloat(stateObj.state));
+            if (isNumeric) {
+              return html`
+                <sleep-tracker-environment-chart
+                  .hass=${this.hass}
+                  .entityId=${entityId}
+                  .startedAt=${session.started_at}
+                  .endedAt=${session.ended_at}
+                ></sleep-tracker-environment-chart>
               `;
             }
             const name = stateObj.attributes.friendly_name || entityId;

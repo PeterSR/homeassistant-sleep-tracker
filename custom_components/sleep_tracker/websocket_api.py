@@ -59,6 +59,7 @@ _UPDATE_SETTINGS_FIELDS: dict = {
     "skip_phase_review": bool,
     "export_url": vol.Any(vol.All(str, vol.Length(max=2048)), None),
     "export_headers": vol.Schema({_short_str: vol.All(str, vol.Length(max=_MAX_HEADER_LEN))}),
+    "export_environment_data": bool,
     "retention_days": vol.All(int, vol.Range(min=7, max=365)),
     "checklist": vol.All([CHECKLIST_ITEM_SCHEMA], vol.Length(max=_MAX_LIST_ITEMS)),
     "show_note": bool,
@@ -336,6 +337,7 @@ async def ws_custom_event(
         vol.Required("type"): "sleep_tracker/export_data",
         vol.Optional("start_date"): vol.Any(vol.All(str, vol.Match(_ISO_DATE_RE)), None),
         vol.Optional("end_date"): vol.Any(vol.All(str, vol.Match(_ISO_DATE_RE)), None),
+        vol.Optional("include_environment"): bool,
     }
 )
 @websocket_api.async_response
@@ -345,8 +347,11 @@ async def ws_export_data(
     """Export all sessions for the current user in an optional date range."""
     coordinator = _get_coordinator(hass)
     user_id = connection.user.id
-    data = coordinator.export_user_data(
-        user_id, msg.get("start_date"), msg.get("end_date")
+    data = await coordinator.async_export_user_data(
+        user_id,
+        msg.get("start_date"),
+        msg.get("end_date"),
+        include_environment=bool(msg.get("include_environment", False)),
     )
     connection.send_result(msg["id"], data)
 

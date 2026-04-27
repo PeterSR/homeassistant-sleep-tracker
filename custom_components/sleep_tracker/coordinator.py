@@ -949,17 +949,23 @@ class SleepTrackerCoordinator:
         sessions = self.store.get_user_sessions(user_id, limit, offset)
         return [self._session_to_dict(s) for s in sessions]
 
-    def export_user_data(
+    async def async_export_user_data(
         self,
         user_id: str,
         start_date: str | None = None,
         end_date: str | None = None,
+        include_environment: bool = False,
     ) -> dict:
         """Export all sessions for a user within an optional date range.
 
         start_date / end_date are ISO strings compared against session.started_at
         lexicographically (both are ISO, so lex-order == chronological). Returns
         all completed or finalized sessions — active sessions are excluded.
+
+        When include_environment is True, attaches an "environment_history" map
+        (entity_id -> list of state changes) for each session, scoped to the
+        session's [started_at, ended_at] window and limited to the user's
+        configured environment_entities.
         """
         sessions: list[SleepSession] = []
         for s in self.store.sessions.values():
@@ -971,8 +977,39 @@ class SleepTrackerCoordinator:
                 continue
             sessions.append(s)
         sessions.sort(key=lambda s: s.started_at)
+
+        config = self.store.get_user_config(user_id)
+        attach_env = (
+            include_environment
+            and config is not None
+            and bool(config.environment_entities)
+        )
+
+        session_dicts: list[dict] = []
+        for s in sessions:
+            d = self._session_to_dict(s)
+            if attach_env and s.ended_at:
+                try:
+                    from .history_helper import async_get_state_history
+
+                    start_dt = datetime.fromisoformat(s.started_at)
+                    end_dt = datetime.fromisoformat(s.ended_at)
+                    d["environment_history"] = await async_get_state_history(
+                        self.hass,
+                        config.environment_entities,
+                        start_dt,
+                        end_dt,
+                    )
+                except Exception:  # noqa: BLE001
+                    _LOGGER.exception(
+                        "Failed to fetch environment history for session %s",
+                        s.session_id,
+                    )
+                    d["environment_history"] = {}
+            session_dicts.append(d)
+
         return {
-            "sessions": [self._session_to_dict(s) for s in sessions],
+            "sessions": session_dicts,
             "count": len(sessions),
             "exported_at": dt_util.utcnow().isoformat(),
         }

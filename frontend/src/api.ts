@@ -98,12 +98,14 @@ export class SleepTrackerApi {
 
   async exportData(
     start_date?: string | null,
-    end_date?: string | null
+    end_date?: string | null,
+    include_environment = false
   ): Promise<{ sessions: SleepSession[]; count: number; exported_at: string }> {
     return this.hass.callWS({
       type: "sleep_tracker/export_data",
       start_date: start_date ?? null,
       end_date: end_date ?? null,
+      include_environment,
     });
   }
 
@@ -229,6 +231,7 @@ export class SleepTrackerApi {
         | "skip_phase_review"
         | "export_url"
         | "export_headers"
+        | "export_environment_data"
         | "retention_days"
         | "checklist"
         | "show_note"

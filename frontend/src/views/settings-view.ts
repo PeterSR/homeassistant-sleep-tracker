@@ -24,6 +24,7 @@ export class SettingsView extends LitElement {
   @state() private _latency = 15;
   @state() private _awakeningGrace = 0;
   @state() private _exportUrl = "";
+  @state() private _exportEnvironmentData = false;
   @state() private _retentionDays = 90;
   @state() private _skipEventReview = false;
   @state() private _skipPhaseReview = false;
@@ -81,6 +82,7 @@ export class SettingsView extends LitElement {
       this._skipEventReview = config.skip_event_review;
       this._skipPhaseReview = config.skip_phase_review;
       this._exportUrl = config.export_url || "";
+      this._exportEnvironmentData = config.export_environment_data;
       this._retentionDays = config.retention_days;
       this._checklist = [...(config.checklist || [])];
       this._showNote = config.show_note;
@@ -125,6 +127,7 @@ export class SettingsView extends LitElement {
         skip_event_review: this._skipEventReview,
         skip_phase_review: this._skipPhaseReview,
         export_url: this._exportUrl || null,
+        export_environment_data: this._exportEnvironmentData,
         retention_days: this._retentionDays,
         checklist: this._checklist,
         sleep_goal_minutes: this._sleepGoalMinutes,
@@ -768,6 +771,23 @@ data:
                 .value=${this._exportUrl}
                 @input=${this._onExportUrlChange}
               />
+            </div>
+
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <span class="toggle-label">Include environment data on export</span>
+                <span class="range-value">
+                  Attach recorder history of configured environment entities,
+                  scoped to the session window.
+                </span>
+              </div>
+              <ha-switch
+                .checked=${this._exportEnvironmentData}
+                @change=${(e: Event) => {
+                  this._exportEnvironmentData = (e.target as HTMLInputElement).checked;
+                  this._dirty = true;
+                }}
+              ></ha-switch>
             </div>
 
             <button
