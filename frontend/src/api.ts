@@ -82,6 +82,13 @@ export class SleepTrackerApi {
     });
   }
 
+  async revertToEventReview(session_id: string): Promise<SleepSession> {
+    return this.hass.callWS({
+      type: "sleep_tracker/revert_to_event_review",
+      session_id,
+    });
+  }
+
   async event(event_type: CycleType): Promise<SleepSession> {
     return this.hass.callWS({
       type: "sleep_tracker/event",

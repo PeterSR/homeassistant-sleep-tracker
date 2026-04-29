@@ -223,6 +223,7 @@ export class SessionMeta extends LitElement {
                     @keydown=${(e: KeyboardEvent) => {
                       if (e.key === "Enter") this._addNewTag();
                     }}
+                    @blur=${this._addNewTag}
                   />
                 </div>
               `}

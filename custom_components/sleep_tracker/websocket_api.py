@@ -86,6 +86,7 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_stop_sleep)
     websocket_api.async_register_command(hass, ws_pause_sleep)
     websocket_api.async_register_command(hass, ws_reopen_session)
+    websocket_api.async_register_command(hass, ws_revert_to_event_review)
     websocket_api.async_register_command(hass, ws_event)
     websocket_api.async_register_command(hass, ws_custom_event)
     websocket_api.async_register_command(hass, ws_export_data)
@@ -276,6 +277,31 @@ async def ws_reopen_session(
         connection.send_result(msg["id"], session)
     except HomeAssistantError as err:
         connection.send_error(msg["id"], "reopen_failed", str(err))
+
+
+# --- Revert to Event Review ---
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "sleep_tracker/revert_to_event_review",
+        vol.Required("session_id"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_revert_to_event_review(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Revert a completed session back to event-review (clears phases)."""
+    coordinator = _get_coordinator(hass)
+    user_id = connection.user.id
+
+    try:
+        session = await coordinator.async_revert_to_event_review(
+            user_id, msg["session_id"]
+        )
+        connection.send_result(msg["id"], session)
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "revert_failed", str(err))
 
 
 # --- Event ---

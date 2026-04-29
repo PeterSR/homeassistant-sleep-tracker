@@ -850,7 +850,7 @@ data:
               `
             : nothing}
 
-          <button class="add-btn" @click=${this._openWizard}>
+          <button class="add-btn" @click=${() => this._openWizard()}>
             <ha-icon icon="mdi:plus"></ha-icon> Add item
           </button>
 
@@ -901,7 +901,7 @@ data:
               `
             : nothing}
 
-          <button class="add-btn" @click=${this._openCustomWizard}>
+          <button class="add-btn" @click=${() => this._openCustomWizard()}>
             <ha-icon icon="mdi:plus"></ha-icon> Add custom event
           </button>
 

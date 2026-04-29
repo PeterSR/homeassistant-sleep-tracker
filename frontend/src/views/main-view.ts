@@ -116,6 +116,55 @@ export class MainView extends LitElement {
     }
   }
 
+  private _renderEnvironment() {
+    const config = this.userState.config;
+    if (!config?.show_environment || !config.environment_entities?.length) {
+      return nothing;
+    }
+
+    return html`
+      <div class="section">
+        <h3>Environment</h3>
+        <div class="env-list">
+          ${config.environment_entities.map((entityId) => {
+            const stateObj = this.hass.states[entityId];
+            if (!stateObj) {
+              return html`
+                <div class="env-tile unavailable">
+                  <ha-icon icon="mdi:help-circle-outline"></ha-icon>
+                  <span class="env-name">${entityId}</span>
+                  <span class="env-state">Unavailable</span>
+                </div>
+              `;
+            }
+            const name = stateObj.attributes.friendly_name || entityId;
+            const unit = stateObj.attributes.unit_of_measurement || "";
+            return html`
+              <div
+                class="env-tile"
+                @click=${() => this._showEntity(entityId)}
+              >
+                <state-badge .stateObj=${stateObj}></state-badge>
+                <span class="env-name">${name}</span>
+                <span class="env-state">${stateObj.state}${unit ? ` ${unit}` : ""}</span>
+              </div>
+            `;
+          })}
+        </div>
+      </div>
+    `;
+  }
+
+  private _showEntity(entityId: string) {
+    this.dispatchEvent(
+      new CustomEvent("hass-more-info", {
+        bubbles: true,
+        composed: true,
+        detail: { entityId },
+      })
+    );
+  }
+
   private _renderChecklist() {
     const checklist = this.userState.config?.checklist || [];
     if (checklist.length === 0) return nothing;
@@ -281,6 +330,8 @@ export class MainView extends LitElement {
                 <p>Tap the button above when you lay down to sleep.</p>
               </div>
             `}
+
+        ${this._renderEnvironment()}
       </div>
     `;
   }
@@ -393,6 +444,37 @@ export class MainView extends LitElement {
         font-weight: var(--ha-font-weight-medium, 500);
       }
       .unfinalized-hint {
+        font-size: var(--ha-font-size-s, 12px);
+        color: var(--secondary-text-color);
+      }
+      .env-list {
+        display: flex;
+        flex-direction: column;
+        gap: var(--ha-space-2, 8px);
+      }
+      .env-tile {
+        display: flex;
+        align-items: center;
+        gap: var(--ha-space-3, 12px);
+        padding: var(--ha-space-3, 12px) var(--ha-space-4, 16px);
+        background: var(--card-background-color, white);
+        border-radius: var(--ha-border-radius-md, 8px);
+        cursor: pointer;
+        border: 1px solid var(--divider-color, #e0e0e0);
+        transition: background 0.15s;
+      }
+      .env-tile:hover {
+        background: var(--secondary-background-color, #f5f5f5);
+      }
+      .env-tile.unavailable {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .env-name {
+        flex: 1;
+        font-size: var(--ha-font-size-m, 14px);
+      }
+      .env-state {
         font-size: var(--ha-font-size-s, 12px);
         color: var(--secondary-text-color);
       }

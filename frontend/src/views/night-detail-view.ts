@@ -37,6 +37,7 @@ export class NightDetailView extends LitElement {
   @state() private _showPhases = true;
   @state() private _confirmDelete = false;
   @state() private _confirmResume = false;
+  @state() private _confirmBackToEvents = false;
   @state() private _appendingPhase: { state: "awake" | "asleep"; endTime: string } | null = null;
   @state() private _automationModal: SleepEvent | null = null;
 
@@ -330,6 +331,21 @@ export class NightDetailView extends LitElement {
     }
   }
 
+  private async _backToEvents() {
+    if (!this._session || this._busy) return;
+    const sessionId = this._session.session_id;
+    this._busy = true;
+    try {
+      await this.api.revertToEventReview(sessionId);
+      this._confirmBackToEvents = false;
+      this._navigate(`/review/${sessionId}`);
+    } catch (err) {
+      console.error("Back to events failed:", err);
+    } finally {
+      this._busy = false;
+    }
+  }
+
   private _openAppendPhase() {
     if (!this._session?.phases?.length) return;
     const last = this._session.phases[this._session.phases.length - 1];
@@ -531,6 +547,19 @@ export class NightDetailView extends LitElement {
         </div>
 
         <div class="footer-actions">
+          ${!s.finalized
+            ? html`
+                <button
+                  class="minor-btn"
+                  ?disabled=${this._busy}
+                  @click=${() => { this._confirmBackToEvents = true; }}
+                  title="Go back to event review (clears phase edits)"
+                >
+                  <ha-icon icon="mdi:arrow-left"></ha-icon>
+                  Back to Events
+                </button>
+              `
+            : nothing}
           ${this._canResume
             ? html`
                 <button
@@ -565,6 +594,36 @@ export class NightDetailView extends LitElement {
             Delete Session
           </button>
         </div>
+
+        ${this._confirmBackToEvents
+          ? html`
+              <div class="confirm-overlay" @click=${() => { this._confirmBackToEvents = false; }}>
+                <ha-card class="confirm-card" @click=${(e: Event) => e.stopPropagation()}>
+                  <h3>Back to event review?</h3>
+                  <p>
+                    Materialized phases will be discarded. You'll be able to edit
+                    events again, then re-run phase materialization. Any phase edits
+                    you've made will be lost.
+                  </p>
+                  <div class="confirm-actions">
+                    <button
+                      class="confirm-cancel"
+                      @click=${() => { this._confirmBackToEvents = false; }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      class="confirm-primary"
+                      ?disabled=${this._busy}
+                      @click=${this._backToEvents}
+                    >
+                      ${this._busy ? "Reverting..." : "Back to Events"}
+                    </button>
+                  </div>
+                </ha-card>
+              </div>
+            `
+          : nothing}
 
         ${this._confirmResume
           ? html`

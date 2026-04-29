@@ -405,6 +405,32 @@ class SleepTrackerCoordinator:
         _LOGGER.info("Sleep session %s reopened for user %s", session_id, user_id)
         return self._session_to_dict(session)
 
+    async def async_revert_to_event_review(
+        self, user_id: str, session_id: str
+    ) -> dict:
+        """Clear materialized phases on a completed session, returning it to event-review state.
+
+        Keeps ended_at intact (unlike reopen). Errors if finalized or active.
+        """
+        session = self.store.get_session(session_id)
+        if session is None or session.user_id != user_id:
+            raise HomeAssistantError("Session not found")
+        if session.finalized:
+            raise HomeAssistantError("Cannot revert a finalized session")
+        if session.is_active:
+            raise HomeAssistantError("Session is not completed")
+        if session.phases is None:
+            raise HomeAssistantError("Session has no materialized phases")
+
+        self.store.update_session(session_id, phases=None)
+        self._edit_history.pop(session_id, None)
+
+        self._notify_listeners(user_id)
+        _LOGGER.info(
+            "Session %s reverted to event review for user %s", session_id, user_id
+        )
+        return self._session_to_dict(session)
+
     async def async_event(
         self,
         user_id: str,
