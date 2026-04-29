@@ -15,7 +15,7 @@ import { formatDate, formatTime } from "../utils";
 
 import "../components/timeline-bar";
 import "../components/session-meta";
-import "../components/automation-info-modal";
+import "../components/event-info-modal";
 
 function isCycleType(t: string): t is CycleType {
   return (CYCLE_TYPES as readonly string[]).includes(t);
@@ -33,7 +33,7 @@ export class EventReviewView extends LitElement {
   @state() private _loading = true;
   @state() private _busy = false;
   @state() private _confirmDelete = false;
-  @state() private _automationModal: SleepEvent | null = null;
+  @state() private _eventInfoModal: SleepEvent | null = null;
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -271,14 +271,14 @@ export class EventReviewView extends LitElement {
           </button>
         </div>
 
-        ${this._automationModal
+        ${this._eventInfoModal
           ? html`
-              <sleep-tracker-automation-info-modal
+              <sleep-tracker-event-info-modal
                 .hass=${this.hass}
-                .automationId=${this._automationModal.automation_id ?? null}
-                .automationTriggerId=${this._automationModal.automation_trigger_id ?? null}
-                @close=${() => { this._automationModal = null; }}
-              ></sleep-tracker-automation-info-modal>
+                .event=${this._eventInfoModal}
+                .customEvents=${this.userState.config?.custom_events ?? []}
+                @close=${() => { this._eventInfoModal = null; }}
+              ></sleep-tracker-event-info-modal>
             `
           : nothing}
 
@@ -329,8 +329,8 @@ export class EventReviewView extends LitElement {
           ? html`
               <button
                 class="automation-chip ${event.automation_trigger_id === "ERROR" ? "err" : ""}"
-                @click=${() => { this._automationModal = event; }}
-                title="Show automation info"
+                @click=${() => { this._eventInfoModal = event; }}
+                title="Show event details"
               >
                 <ha-icon icon="mdi:robot-outline"></ha-icon>
                 automation

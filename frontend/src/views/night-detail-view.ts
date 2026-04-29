@@ -15,7 +15,7 @@ import { formatDate, formatTime, formatDuration } from "../utils";
 import "../components/timeline-bar";
 import "../components/night-stats";
 import "../components/session-meta";
-import "../components/automation-info-modal";
+import "../components/event-info-modal";
 import "../components/environment-chart";
 
 type BoundaryEdit = { afterIndex: number };
@@ -39,7 +39,7 @@ export class NightDetailView extends LitElement {
   @state() private _confirmResume = false;
   @state() private _confirmBackToEvents = false;
   @state() private _appendingPhase: { state: "awake" | "asleep"; endTime: string } | null = null;
-  @state() private _automationModal: SleepEvent | null = null;
+  @state() private _eventInfoModal: SleepEvent | null = null;
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -903,8 +903,8 @@ export class NightDetailView extends LitElement {
                 ? html`
                     <button
                       class="automation-chip ${e.automation_trigger_id === "ERROR" ? "err" : ""}"
-                      @click=${() => { this._automationModal = e; }}
-                      title="Show automation info"
+                      @click=${() => { this._eventInfoModal = e; }}
+                      title="Show event details"
                     >
                       <ha-icon icon="mdi:robot-outline"></ha-icon>
                       automation
@@ -915,14 +915,14 @@ export class NightDetailView extends LitElement {
           `;
         })}
       </div>
-      ${this._automationModal
+      ${this._eventInfoModal
         ? html`
-            <sleep-tracker-automation-info-modal
+            <sleep-tracker-event-info-modal
               .hass=${this.hass}
-              .automationId=${this._automationModal.automation_id ?? null}
-              .automationTriggerId=${this._automationModal.automation_trigger_id ?? null}
-              @close=${() => { this._automationModal = null; }}
-            ></sleep-tracker-automation-info-modal>
+              .event=${this._eventInfoModal}
+              .customEvents=${this.userState.config?.custom_events ?? []}
+              @close=${() => { this._eventInfoModal = null; }}
+            ></sleep-tracker-event-info-modal>
           `
         : nothing}
     `;
