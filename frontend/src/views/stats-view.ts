@@ -173,6 +173,17 @@ export class StatsView extends LitElement {
                 </div>
               </ha-card>
 
+              ${this._renderHistogram({
+                title: "Sleep Duration Distribution",
+                subtitle: "30 min buckets",
+                values: s.daily.map((d) => d.total_sleep_minutes).filter((x) => x > 0),
+                bucketSize: 30,
+                formatLabel: (m) => this._formatBucketLabel(m),
+                formatRange: (a, b) => `${formatDuration(a)}–${formatDuration(b)}`,
+                unit: "night",
+                barClass: "",
+              })}
+
               <ha-card>
                 <div class="card-header">Efficiency</div>
                 <div class="chart">
@@ -221,6 +232,17 @@ export class StatsView extends LitElement {
                   })}
                 </div>
               </ha-card>
+
+              ${this._renderHistogram({
+                title: "Awakenings Distribution",
+                subtitle: "per night",
+                values: s.daily.map((d) => d.awakenings),
+                bucketSize: 1,
+                formatLabel: (n) => `${n}`,
+                formatRange: (a) => `${a} awakening${a !== 1 ? "s" : ""}`,
+                unit: "night",
+                barClass: "awakenings",
+              })}
             `
           : html`<p class="empty">No sleep data in this range.</p>`}
       </div>
@@ -230,6 +252,66 @@ export class StatsView extends LitElement {
   private _shortDate(iso: string): string {
     const d = new Date(iso + "T00:00:00");
     return d.toLocaleDateString([], { month: "short", day: "numeric" });
+  }
+
+  private _renderHistogram(opts: {
+    title: string;
+    subtitle: string;
+    values: number[];
+    bucketSize: number;
+    formatLabel: (bucketStart: number) => string;
+    formatRange: (bucketStart: number, bucketEnd: number) => string;
+    unit: string;
+    barClass: string;
+  }) {
+    const { title, subtitle, values, bucketSize, formatLabel, formatRange, unit, barClass } = opts;
+    if (values.length === 0) return nothing;
+
+    const minV = Math.min(...values);
+    const maxV = Math.max(...values);
+    const startBucket = Math.floor(minV / bucketSize) * bucketSize;
+    const endBucket = Math.floor(maxV / bucketSize) * bucketSize;
+    const bucketCount = (endBucket - startBucket) / bucketSize + 1;
+
+    const counts = new Array(bucketCount).fill(0);
+    for (const v of values) {
+      const idx = Math.min(bucketCount - 1, Math.floor((v - startBucket) / bucketSize));
+      counts[idx]++;
+    }
+    const maxCount = Math.max(...counts, 1);
+
+    return html`
+      <ha-card>
+        <div class="card-header">
+          ${title}
+          <span class="session-count">${subtitle}</span>
+        </div>
+        <div class="histogram">
+          ${counts.map((count, i) => {
+            const bucketStart = startBucket + i * bucketSize;
+            const heightPct = (count / maxCount) * 100;
+            return html`
+              <div class="hist-col" title="${formatRange(bucketStart, bucketStart + bucketSize)}: ${count} ${unit}${count !== 1 ? "s" : ""}">
+                <span class="hist-count">${count > 0 ? count : ""}</span>
+                <div class="hist-bar-track">
+                  <div
+                    class="hist-bar ${barClass}"
+                    style="height: ${heightPct}%"
+                  ></div>
+                </div>
+                <span class="hist-label">${formatLabel(bucketStart)}</span>
+              </div>
+            `;
+          })}
+        </div>
+      </ha-card>
+    `;
+  }
+
+  private _formatBucketLabel(minutes: number): string {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return m === 0 ? `${h}h` : `${h}:${String(m).padStart(2, "0")}`;
   }
 
   static styles = [
@@ -328,6 +410,54 @@ export class StatsView extends LitElement {
         text-align: center;
         color: var(--secondary-text-color);
         padding: var(--ha-space-8, 32px);
+      }
+      .histogram {
+        display: flex;
+        align-items: stretch;
+        gap: 2px;
+        height: 160px;
+        padding: 0 var(--ha-space-1, 4px);
+      }
+      .hist-col {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        min-width: 0;
+      }
+      .hist-count {
+        font-size: var(--ha-font-size-xs, 10px);
+        color: var(--secondary-text-color);
+        height: 14px;
+        line-height: 14px;
+      }
+      .hist-bar-track {
+        flex: 1;
+        width: 100%;
+        display: flex;
+        align-items: flex-end;
+        background: var(--secondary-background-color, #f5f5f5);
+        border-radius: 3px 3px 0 0;
+        overflow: hidden;
+      }
+      .hist-bar {
+        width: 100%;
+        background: var(--sleep-color-asleep, #0072B2);
+        border-radius: 3px 3px 0 0;
+        transition: height 0.3s ease;
+        min-height: 1px;
+      }
+      .hist-bar.awakenings {
+        background: var(--sleep-color-awake, #D55E00);
+      }
+      .hist-label {
+        font-size: var(--ha-font-size-xs, 10px);
+        color: var(--secondary-text-color);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
       }
     `,
   ];
