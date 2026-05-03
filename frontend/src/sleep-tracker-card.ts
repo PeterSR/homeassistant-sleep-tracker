@@ -8,7 +8,7 @@
 
 import { LitElement, html, css, nothing } from "lit";
 import { state } from "lit/decorators.js";
-import type { HomeAssistant, UserState } from "./types";
+import type { HomeAssistant, TrackerState } from "./types";
 import { SleepTrackerApi } from "./api";
 import { tokens } from "./styles";
 import { timeAgo, formatDuration } from "./utils";
@@ -21,7 +21,7 @@ interface StatusCardConfig {
 
 class SleepTrackerStatusCard extends LitElement {
   @state() private _config: StatusCardConfig = {};
-  @state() private _userState: UserState | null = null;
+  @state() private _trackerState: TrackerState | null = null;
   @state() private _sending = false;
 
   private _hass?: HomeAssistant;
@@ -65,7 +65,7 @@ class SleepTrackerStatusCard extends LitElement {
     if (!this._api) return;
     try {
       this._unsub = await this._api.subscribe((state) => {
-        this._userState = state;
+        this._trackerState = state;
         this.requestUpdate();
       });
     } catch (e) {
@@ -114,12 +114,12 @@ class SleepTrackerStatusCard extends LitElement {
   }
 
   render() {
-    if (!this._userState) {
+    if (!this._trackerState) {
       return html`<ha-card><div class="loading">Loading...</div></ha-card>`;
     }
 
     // User not set up
-    if (!this._userState.config) {
+    if (!this._trackerState.config) {
       return html`
         <ha-card>
           <div class="content not-setup">
@@ -130,7 +130,7 @@ class SleepTrackerStatusCard extends LitElement {
       `;
     }
 
-    const active = this._userState.active_session;
+    const active = this._trackerState.active_session;
 
     // Active session
     if (active) {
@@ -182,7 +182,7 @@ class SleepTrackerStatusCard extends LitElement {
     }
 
     // Not sleeping
-    const last = this._userState.last_session;
+    const last = this._trackerState.last_session;
     return html`
       <ha-card>
         <div class="content">

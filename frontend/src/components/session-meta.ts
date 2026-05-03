@@ -1,6 +1,6 @@
 import { LitElement, html, css, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import type { HomeAssistant, SleepSession, UserConfig } from "../types";
+import type { HomeAssistant, SleepSession, TrackerConfig } from "../types";
 import type { SleepTrackerApi } from "../api";
 import { tokens } from "../styles";
 
@@ -9,7 +9,7 @@ export class SessionMeta extends LitElement {
   @property({ attribute: false }) hass!: HomeAssistant;
   @property({ attribute: false }) api!: SleepTrackerApi;
   @property({ attribute: false }) session!: SleepSession;
-  @property({ attribute: false }) config!: UserConfig;
+  @property({ attribute: false }) config!: TrackerConfig;
   @property({ type: Boolean }) readonly = false;
 
   @state() private _noteValue = "";

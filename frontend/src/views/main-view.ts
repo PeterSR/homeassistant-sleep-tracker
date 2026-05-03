@@ -1,6 +1,6 @@
 import { LitElement, html, css, nothing, type PropertyValues } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import type { HomeAssistant, UserState, ToolbarConfig } from "../types";
+import type { HomeAssistant, TrackerState, ToolbarConfig } from "../types";
 import type { SleepTrackerApi } from "../api";
 import { tokens, viewStyles, buttonStyles, cardStyles } from "../styles";
 import { formatTime, timeAgo, formatDuration } from "../utils";
@@ -17,7 +17,7 @@ import "../components/custom-events-bar";
 export class MainView extends LitElement {
   @property({ attribute: false }) hass!: HomeAssistant;
   @property({ attribute: false }) api!: SleepTrackerApi;
-  @property({ attribute: false }) userState!: UserState;
+  @property({ attribute: false }) trackerState!: TrackerState;
   @property({ type: Boolean }) narrow = false;
 
   connectedCallback(): void {
@@ -26,7 +26,7 @@ export class MainView extends LitElement {
   }
 
   willUpdate(changed: PropertyValues): void {
-    if (changed.has("userState")) {
+    if (changed.has("trackerState")) {
       this._setToolbar();
     }
   }
@@ -117,7 +117,7 @@ export class MainView extends LitElement {
   }
 
   private _renderEnvironment() {
-    const config = this.userState.config;
+    const config = this.trackerState.config;
     if (!config?.show_environment || !config.environment_entities?.length) {
       return nothing;
     }
@@ -166,7 +166,7 @@ export class MainView extends LitElement {
   }
 
   private _renderChecklist() {
-    const checklist = this.userState.config?.checklist || [];
+    const checklist = this.trackerState.config?.checklist || [];
     if (checklist.length === 0) return nothing;
 
     return html`
@@ -195,13 +195,13 @@ export class MainView extends LitElement {
 
   render() {
     // Not set up
-    if (!this.userState.config) {
+    if (!this.trackerState.config) {
       return html`
         <sleep-tracker-setup-prompt .hass=${this.hass} .api=${this.api}></sleep-tracker-setup-prompt>
       `;
     }
 
-    const active = this.userState.active_session;
+    const active = this.trackerState.active_session;
 
     // Active session
     if (active) {
@@ -243,7 +243,7 @@ export class MainView extends LitElement {
 
             <sleep-tracker-custom-events-bar
               .api=${this.api}
-              .customEvents=${this.userState.config?.custom_events ?? []}
+              .customEvents=${this.trackerState.config?.custom_events ?? []}
             ></sleep-tracker-custom-events-bar>
 
             ${paused
@@ -276,8 +276,8 @@ export class MainView extends LitElement {
     }
 
     // No active session
-    const last = this.userState.last_session;
-    const unfinalized = this.userState.unfinalized_sessions || [];
+    const last = this.trackerState.last_session;
+    const unfinalized = this.trackerState.unfinalized_sessions || [];
     return html`
       <div class="container">
         ${unfinalized.length > 0
@@ -321,7 +321,7 @@ export class MainView extends LitElement {
                 <h3>Last Night</h3>
                 <sleep-tracker-session-card
                   .session=${last}
-                  .goalMinutes=${this.userState.config?.sleep_goal_minutes ?? 0}
+                  .goalMinutes=${this.trackerState.config?.sleep_goal_minutes ?? 0}
                 ></sleep-tracker-session-card>
               </div>
             `

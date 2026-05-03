@@ -7,7 +7,7 @@ import {
   type SleepEvent,
   type SleepSession,
   type ToolbarConfig,
-  type UserState,
+  type TrackerState,
 } from "../types";
 import type { SleepTrackerApi } from "../api";
 import { tokens, viewStyles, cardStyles } from "../styles";
@@ -25,7 +25,7 @@ function isCycleType(t: string): t is CycleType {
 export class EventReviewView extends LitElement {
   @property({ attribute: false }) hass!: HomeAssistant;
   @property({ attribute: false }) api!: SleepTrackerApi;
-  @property({ attribute: false }) userState!: UserState;
+  @property({ attribute: false }) trackerState!: TrackerState;
   @property() sessionId = "";
   @property({ type: Boolean }) narrow = false;
 
@@ -168,7 +168,7 @@ export class EventReviewView extends LitElement {
       case "pause": return "Paused";
       case "resume": return "Resumed";
       case "custom": {
-        const def = this.userState.config?.custom_events?.find(
+        const def = this.trackerState.config?.custom_events?.find(
           (c) => c.id === event.custom_event_id
         );
         return def?.label ?? "Custom event";
@@ -195,7 +195,7 @@ export class EventReviewView extends LitElement {
       return nothing;
     }
 
-    const phaseReviewSkipped = this.userState.config?.skip_phase_review ?? false;
+    const phaseReviewSkipped = this.trackerState.config?.skip_phase_review ?? false;
     const buttonLabel = phaseReviewSkipped ? "Finalize" : "Continue to phases";
 
     return html`
@@ -221,7 +221,7 @@ export class EventReviewView extends LitElement {
                 .hass=${this.hass}
                 .api=${this.api}
                 .session=${s}
-                .config=${this.userState.config!}
+                .config=${this.trackerState.config!}
                 @session-updated=${(e: CustomEvent<{ session: SleepSession }>) => {
                   this._session = e.detail.session;
                 }}
@@ -276,7 +276,7 @@ export class EventReviewView extends LitElement {
               <sleep-tracker-event-info-modal
                 .hass=${this.hass}
                 .event=${this._eventInfoModal}
-                .customEvents=${this.userState.config?.custom_events ?? []}
+                .customEvents=${this.trackerState.config?.custom_events ?? []}
                 @close=${() => { this._eventInfoModal = null; }}
               ></sleep-tracker-event-info-modal>
             `

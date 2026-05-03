@@ -1,6 +1,6 @@
 import { LitElement, html, css, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import type { HomeAssistant, UserState, SleepSession, ToolbarConfig } from "../types";
+import type { HomeAssistant, TrackerState, SleepSession, ToolbarConfig } from "../types";
 import type { SleepTrackerApi } from "../api";
 import { tokens, viewStyles, emptyStateStyles } from "../styles";
 
@@ -10,7 +10,7 @@ import "../components/session-card";
 export class HistoryView extends LitElement {
   @property({ attribute: false }) hass!: HomeAssistant;
   @property({ attribute: false }) api!: SleepTrackerApi;
-  @property({ attribute: false }) userState!: UserState;
+  @property({ attribute: false }) trackerState!: TrackerState;
   @property({ type: Boolean }) narrow = false;
 
   @state() private _sessions: SleepSession[] = [];
@@ -77,7 +77,7 @@ export class HistoryView extends LitElement {
           ${this._sessions.map(
             (s) => html`<sleep-tracker-session-card
               .session=${s}
-              .goalMinutes=${this.userState.config?.sleep_goal_minutes ?? 0}
+              .goalMinutes=${this.trackerState.config?.sleep_goal_minutes ?? 0}
             ></sleep-tracker-session-card>`
           )}
         </div>

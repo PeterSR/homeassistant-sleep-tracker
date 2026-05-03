@@ -5,8 +5,8 @@ import type {
   CustomEvent as CustomEventDef,
   HomeAssistant,
   ToolbarConfig,
-  UserConfig,
-  UserState,
+  TrackerConfig,
+  TrackerState,
 } from "../types";
 import type { SleepTrackerApi } from "../api";
 import { tokens, viewStyles, formStyles, cardStyles } from "../styles";
@@ -17,7 +17,9 @@ import "../components/tag-picker";
 export class SettingsView extends LitElement {
   @property({ attribute: false }) hass!: HomeAssistant;
   @property({ attribute: false }) api!: SleepTrackerApi;
-  @property({ attribute: false }) userState!: UserState;
+  @property({ attribute: false }) trackerState!: TrackerState;
+  @property({ attribute: false }) trackers: TrackerConfig[] = [];
+  @property() selectedTrackerId: string | null = null;
   @property({ type: Boolean }) narrow = false;
 
   @state() private _onset = 30;
@@ -58,6 +60,10 @@ export class SettingsView extends LitElement {
   @state() private _envWizardEntityId = "";
   @state() private _envWizardEditIndex: number | null = null;
   @state() private _copied: string | null = null;
+  @state() private _renameWizardOpen = false;
+  @state() private _renameValue = "";
+  @state() private _newSharedName = "";
+  @state() private _addingShared = false;
 
   private _copiedTimeoutId: number | null = null;
 
@@ -68,13 +74,13 @@ export class SettingsView extends LitElement {
   }
 
   willUpdate(changed: PropertyValues): void {
-    if (changed.has("userState") && !this._dirty) {
+    if (changed.has("trackerState") && !this._dirty) {
       this._loadFromState();
     }
   }
 
   private _loadFromState() {
-    const config = this.userState?.config;
+    const config = this.trackerState?.config;
     if (config) {
       this._onset = config.sleep_onset_minutes;
       this._latency = config.fall_asleep_latency_minutes;
@@ -223,7 +229,7 @@ export class SettingsView extends LitElement {
     key: "show_note" | "show_rating_quality" | "show_rating_feeling" | "show_tags" | "show_environment",
     value: boolean,
   ) {
-    const updates: Partial<UserConfig> = { [key]: value };
+    const updates: Partial<TrackerConfig> = { [key]: value };
     await this.api.updateSettings(updates);
   }
 
@@ -464,6 +470,179 @@ export class SettingsView extends LitElement {
     );
   }
 
+  private _notifyTrackersChanged() {
+    this.dispatchEvent(
+      new CustomEvent("sleep-tracker-trackers-update", {
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
+
+  private _openRenameWizard = () => {
+    this._renameValue = this.trackerState.config?.display_name || "";
+    this._renameWizardOpen = true;
+  };
+
+  private _closeRenameWizard = () => {
+    this._renameWizardOpen = false;
+  };
+
+  private async _confirmRename() {
+    const name = this._renameValue.trim();
+    if (!name) return;
+    try {
+      await this.api.updateSettings({ display_name: name });
+      this._closeRenameWizard();
+      this._notifyTrackersChanged();
+    } catch (err) {
+      console.error("Failed to rename tracker:", err);
+      window.alert(`Rename failed: ${(err as Error).message ?? err}`);
+    }
+  }
+
+  private _confirmDeleteCurrentTracker = async () => {
+    const config = this.trackerState.config;
+    if (!config || config.kind !== "shared") return;
+    const ok = window.confirm(
+      `Delete "${config.display_name}"? All sessions for this tracker will be removed permanently.`,
+    );
+    if (!ok) return;
+    try {
+      await this.api.deleteTracker(config.tracker_id);
+      this._notifyTrackersChanged();
+      // Navigate back to main; the panel will re-resolve the selection.
+      this.dispatchEvent(
+        new CustomEvent("navigate", {
+          bubbles: true,
+          composed: true,
+          detail: { path: "/" },
+        })
+      );
+    } catch (err) {
+      console.error("Failed to delete tracker:", err);
+      window.alert(`Delete failed: ${(err as Error).message ?? err}`);
+    }
+  };
+
+  private async _deleteSharedTracker(tracker: TrackerConfig) {
+    const ok = window.confirm(
+      `Delete "${tracker.display_name}"? All sessions for this tracker will be removed permanently.`,
+    );
+    if (!ok) return;
+    try {
+      await this.api.deleteTracker(tracker.tracker_id);
+      this._notifyTrackersChanged();
+    } catch (err) {
+      console.error("Failed to delete tracker:", err);
+      window.alert(`Delete failed: ${(err as Error).message ?? err}`);
+    }
+  }
+
+  private async _addSharedTracker() {
+    const name = this._newSharedName.trim();
+    if (!name || this._addingShared) return;
+    this._addingShared = true;
+    try {
+      await this.api.createSharedTracker(name);
+      this._newSharedName = "";
+      this._notifyTrackersChanged();
+    } catch (err) {
+      console.error("Failed to create shared tracker:", err);
+      window.alert(`Failed: ${(err as Error).message ?? err}`);
+    } finally {
+      this._addingShared = false;
+    }
+  }
+
+  private _renderRenameWizard() {
+    return html`
+      <div class="wizard-overlay" @click=${this._closeRenameWizard}>
+        <ha-card class="wizard-card" @click=${(e: Event) => e.stopPropagation()}>
+          <div class="wizard-header">Rename tracker</div>
+          <div class="wizard-form">
+            <div class="field">
+              <label>Display name</label>
+              <input
+                type="text"
+                .value=${this._renameValue}
+                @input=${(e: Event) => {
+                  this._renameValue = (e.target as HTMLInputElement).value;
+                }}
+              />
+            </div>
+            <button
+              class="save-btn"
+              ?disabled=${!this._renameValue.trim()}
+              @click=${this._confirmRename}
+            >Save</button>
+          </div>
+        </ha-card>
+      </div>
+    `;
+  }
+
+  private _renderManageTrackers() {
+    const sharedTrackers = (this.trackers || []).filter((t) => t.kind === "shared");
+    return html`
+      <ha-card class="info-card">
+        <div class="card-header">Shared trackers</div>
+        <p class="hint">
+          For people who aren't Home Assistant users (e.g. a baby). All
+          authenticated users can see and act on these trackers.
+        </p>
+
+        ${sharedTrackers.length > 0
+          ? html`
+              <div class="checklist-list">
+                ${sharedTrackers.map(
+                  (t) => html`
+                    <div class="checklist-row">
+                      <div class="checklist-row-info">
+                        <ha-icon icon="mdi:account-multiple"></ha-icon>
+                        <div class="checklist-row-detail">
+                          <span class="checklist-row-primary">${t.display_name}</span>
+                          ${t.tracker_id === this.selectedTrackerId
+                            ? html`<span class="checklist-row-secondary">currently active</span>`
+                            : nothing}
+                        </div>
+                      </div>
+                      <button
+                        class="remove-btn"
+                        @click=${() => this._deleteSharedTracker(t)}
+                      >
+                        <ha-icon icon="mdi:delete-outline"></ha-icon>
+                      </button>
+                    </div>
+                  `
+                )}
+              </div>
+            `
+          : html`<p class="hint">No shared trackers yet.</p>`}
+
+        <div class="tag-add-row">
+          <input
+            type="text"
+            class="tag-add-input"
+            placeholder="Name for new shared tracker..."
+            .value=${this._newSharedName}
+            @input=${(e: Event) => {
+              this._newSharedName = (e.target as HTMLInputElement).value;
+            }}
+            @keydown=${(e: KeyboardEvent) => {
+              if (e.key === "Enter") this._addSharedTracker();
+            }}
+          />
+          <button
+            class="save-btn tag-add-btn"
+            ?disabled=${!this._newSharedName.trim() || this._addingShared}
+            @click=${() => this._addSharedTracker()}
+          >Add</button>
+        </div>
+      </ha-card>
+    `;
+  }
+
   private _copy(text: string, label: string) {
     navigator.clipboard.writeText(text).then(() => {
       this._copied = label;
@@ -486,7 +665,7 @@ export class SettingsView extends LitElement {
   }
 
   private _phoneAutomationYaml(): string {
-    const uid = this.userState.config!.user_id;
+    const uid = this.trackerState.config!.tracker_id;
     return `alias: "Sleep Tracker - Phone awake event"
 description: "Send an awake event when phone screen turns on while you're asleep"
 triggers:
@@ -502,12 +681,12 @@ conditions:
 actions:
   - action: sleep_tracker.event_awake
     data:
-      user_id: "${uid}"
+      tracker_id: "${uid}"
       source: phone_sensor`;
   }
 
   private _buttonAutomationYaml(): string {
-    const uid = this.userState.config!.user_id;
+    const uid = this.trackerState.config!.tracker_id;
     return `alias: "Sleep Tracker - Button awake event"
 description: "Send an awake event when bedside button is pressed while you're asleep"
 triggers:
@@ -521,15 +700,15 @@ conditions:
 actions:
   - action: sleep_tracker.event_awake
     data:
-      user_id: "${uid}"
+      tracker_id: "${uid}"
       source: button`;
   }
 
   private _serviceCallYaml(): string {
-    const uid = this.userState.config!.user_id;
+    const uid = this.trackerState.config!.tracker_id;
     return `action: sleep_tracker.event_awake
 data:
-  user_id: "${uid}"
+  tracker_id: "${uid}"
   source: automation
   # Optional — auto-detected via HA traces; pass explicitly for stability:
   automation_id: "{{ this.entity_id }}"
@@ -537,7 +716,7 @@ data:
   }
 
   private get _slug(): string {
-    const name = this.userState.config?.display_name || "";
+    const name = this.trackerState.config?.display_name || "";
     return name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "_")
@@ -645,10 +824,10 @@ data:
   }
 
   render() {
-    if (!this.userState) {
+    if (!this.trackerState) {
       return html`<div class="container"><p>Loading...</p></div>`;
     }
-    if (!this.userState.config) {
+    if (!this.trackerState.config) {
       return html`
         <div class="container">
           <ha-card>
@@ -660,10 +839,37 @@ data:
         </div>
       `;
     }
-    const uid = this.userState.config.user_id;
+    const uid = this.trackerState.config.tracker_id;
+    const config = this.trackerState.config;
 
     return html`
       <div class="container">
+        <ha-card class="info-card tracker-card">
+          <div class="tracker-header">
+            <ha-icon icon=${config.kind === "shared" ? "mdi:account-multiple" : "mdi:account"}></ha-icon>
+            <div class="tracker-header-info">
+              <span class="tracker-header-name">${config.display_name}</span>
+              <span class="tracker-header-kind">${config.kind === "shared" ? "Shared tracker" : "Personal tracker"}</span>
+            </div>
+            <button class="link-btn" @click=${this._openRenameWizard}>
+              <ha-icon icon="mdi:pencil-outline"></ha-icon>
+              Rename
+            </button>
+            ${config.kind === "shared"
+              ? html`
+                  <button class="link-btn danger" @click=${this._confirmDeleteCurrentTracker}>
+                    <ha-icon icon="mdi:delete-outline"></ha-icon>
+                    Delete
+                  </button>
+                `
+              : nothing}
+          </div>
+        </ha-card>
+
+        ${this._renderManageTrackers()}
+
+        ${this._renameWizardOpen ? this._renderRenameWizard() : nothing}
+
         <ha-card>
           <div class="card-header">Sleep Settings</div>
           <div class="form">
@@ -1105,7 +1311,7 @@ data:
         </ha-card>
 
         <ha-card class="info-card">
-          <div class="card-header">Your User ID</div>
+          <div class="card-header">Tracker ID</div>
           <p class="hint">
             Use this ID in automations to send events via services:
           </p>
@@ -1655,6 +1861,61 @@ data:
       }
       .data-link-detail .range-value {
         text-align: left;
+      }
+      .tracker-card {
+        margin-top: 0;
+      }
+      .tracker-header {
+        display: flex;
+        align-items: center;
+        gap: var(--ha-space-3, 12px);
+      }
+      .tracker-header > ha-icon {
+        --mdc-icon-size: 28px;
+        color: var(--secondary-text-color);
+      }
+      .tracker-header-info {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+      .tracker-header-name {
+        font-size: var(--ha-font-size-l, 16px);
+        font-weight: var(--ha-font-weight-medium, 500);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .tracker-header-kind {
+        font-size: var(--ha-font-size-s, 12px);
+        color: var(--secondary-text-color);
+      }
+      .link-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--ha-space-1, 4px);
+        background: none;
+        border: 1px solid var(--divider-color, #e0e0e0);
+        padding: var(--ha-space-1, 4px) var(--ha-space-3, 12px);
+        border-radius: var(--ha-border-radius-sm, 4px);
+        cursor: pointer;
+        font-family: inherit;
+        font-size: var(--ha-font-size-s, 12px);
+        color: var(--primary-text-color);
+        white-space: nowrap;
+      }
+      .link-btn:hover {
+        background: var(--secondary-background-color, #f5f5f5);
+      }
+      .link-btn ha-icon {
+        --mdc-icon-size: 16px;
+      }
+      .link-btn.danger {
+        color: var(--sleep-color-awake, #D55E00);
+      }
+      .link-btn.danger:hover {
+        background: rgba(213, 94, 0, 0.1);
       }
     `,
   ];

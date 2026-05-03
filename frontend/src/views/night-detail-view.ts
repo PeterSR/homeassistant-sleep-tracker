@@ -6,7 +6,7 @@ import type {
   SleepPhase,
   SleepSession,
   ToolbarConfig,
-  UserState,
+  TrackerState,
 } from "../types";
 import type { SleepTrackerApi } from "../api";
 import { tokens, viewStyles, sectionStyles, cardStyles } from "../styles";
@@ -24,7 +24,7 @@ type BoundaryEdit = { afterIndex: number };
 export class NightDetailView extends LitElement {
   @property({ attribute: false }) hass!: HomeAssistant;
   @property({ attribute: false }) api!: SleepTrackerApi;
-  @property({ attribute: false }) userState!: UserState;
+  @property({ attribute: false }) trackerState!: TrackerState;
   @property() sessionId = "";
   @property({ type: Boolean }) narrow = false;
 
@@ -212,7 +212,7 @@ export class NightDetailView extends LitElement {
   }
 
   private _renderEnvironment() {
-    const config = this.userState?.config;
+    const config = this.trackerState?.config;
     if (!config?.show_environment || !config.environment_entities?.length) {
       return nothing;
     }
@@ -314,7 +314,7 @@ export class NightDetailView extends LitElement {
   private get _canResume(): boolean {
     if (!this._session) return false;
     if (this._session.status !== "completed") return false;
-    return this.userState?.last_session?.session_id === this._session.session_id;
+    return this.trackerState?.last_session?.session_id === this._session.session_id;
   }
 
   private async _resumeSession() {
@@ -450,19 +450,19 @@ export class NightDetailView extends LitElement {
                 <h3>Statistics</h3>
                 <sleep-tracker-night-stats
                   .stats=${s.stats}
-                  .goalMinutes=${this.userState.config?.sleep_goal_minutes ?? 0}
+                  .goalMinutes=${this.trackerState.config?.sleep_goal_minutes ?? 0}
                 ></sleep-tracker-night-stats>
               </div>
             `
           : nothing}
 
-        ${this.userState.config
+        ${this.trackerState.config
           ? html`
               <sleep-tracker-session-meta
                 .hass=${this.hass}
                 .api=${this.api}
                 .session=${s}
-                .config=${this.userState.config}
+                .config=${this.trackerState.config}
                 @session-updated=${(e: CustomEvent<{ session: SleepSession }>) => {
                   this._session = e.detail.session;
                 }}
@@ -481,7 +481,7 @@ export class NightDetailView extends LitElement {
                   ${this._busy ? "Finalizing..." : "Finalize Session"}
                 </button>
                 <p class="finalize-hint">
-                  Finalizing locks edits${this.userState.config?.export_url ? " and exports to your REST endpoint" : ""}.
+                  Finalizing locks edits${this.trackerState.config?.export_url ? " and exports to your REST endpoint" : ""}.
                 </p>
               </div>
             `
@@ -876,7 +876,7 @@ export class NightDetailView extends LitElement {
       case "pause": return "Paused";
       case "resume": return "Resumed";
       case "custom": {
-        const def = this.userState.config?.custom_events?.find(
+        const def = this.trackerState.config?.custom_events?.find(
           (c) => c.id === e.custom_event_id
         );
         return def?.label ?? "Custom event";
@@ -920,7 +920,7 @@ export class NightDetailView extends LitElement {
             <sleep-tracker-event-info-modal
               .hass=${this.hass}
               .event=${this._eventInfoModal}
-              .customEvents=${this.userState.config?.custom_events ?? []}
+              .customEvents=${this.trackerState.config?.custom_events ?? []}
               @close=${() => { this._eventInfoModal = null; }}
             ></sleep-tracker-event-info-modal>
           `

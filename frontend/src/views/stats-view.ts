@@ -1,6 +1,6 @@
 import { LitElement, html, css, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import type { HomeAssistant, UserState, ToolbarConfig } from "../types";
+import type { HomeAssistant, TrackerState, ToolbarConfig } from "../types";
 import type { SleepTrackerApi } from "../api";
 import { tokens, viewStyles, statStyles } from "../styles";
 import { formatDuration, efficiencyPercent } from "../utils";
@@ -37,7 +37,7 @@ interface StatsData {
 export class StatsView extends LitElement {
   @property({ attribute: false }) hass!: HomeAssistant;
   @property({ attribute: false }) api!: SleepTrackerApi;
-  @property({ attribute: false }) userState!: UserState;
+  @property({ attribute: false }) trackerState!: TrackerState;
   @property({ type: Boolean }) narrow = false;
 
   @state() private _stats: StatsData | null = null;

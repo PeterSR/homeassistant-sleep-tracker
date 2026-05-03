@@ -90,7 +90,7 @@ export type SessionStatus = "active" | "paused" | "stopped" | "completed" | "fin
 
 export interface SleepSession {
   session_id: string;
-  user_id: string;
+  tracker_id: string;
   started_at: string;
   ended_at: string | null;
   paused_at: string | null;
@@ -114,8 +114,11 @@ export interface ChecklistItem {
   text?: string;
 }
 
-export interface UserConfig {
-  user_id: string;
+export type TrackerKind = "user" | "shared";
+
+export interface TrackerConfig {
+  tracker_id: string;
+  kind: TrackerKind;
   enabled: boolean;
   display_name: string;
   sleep_onset_minutes: number;
@@ -139,11 +142,17 @@ export interface UserConfig {
   custom_events: CustomEvent[];
 }
 
-export interface UserState {
-  config: UserConfig | null;
+export interface TrackerState {
+  config: TrackerConfig | null;
   active_session: SleepSession | null;
   last_session?: SleepSession | null;
   unfinalized_sessions?: SleepSession[];
+}
+
+export interface TrackerSummary {
+  tracker_id: string;
+  kind: TrackerKind;
+  display_name: string;
 }
 
 export interface DailyStat {

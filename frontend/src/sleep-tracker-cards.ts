@@ -6,7 +6,7 @@
 
 import { LitElement, html, css, nothing } from "lit";
 import { state } from "lit/decorators.js";
-import type { HomeAssistant, UserState } from "./types";
+import type { HomeAssistant, TrackerState } from "./types";
 import { SleepTrackerApi } from "./api";
 import { tokens } from "./styles";
 import { formatDate, formatTime, formatDuration } from "./utils";
@@ -23,7 +23,7 @@ interface LastNightCardConfig {
 
 class SleepTrackerLastNightCard extends LitElement {
   @state() private _config: LastNightCardConfig = {};
-  @state() private _userState: UserState | null = null;
+  @state() private _trackerState: TrackerState | null = null;
 
   private _hass?: HomeAssistant;
   private _api?: SleepTrackerApi;
@@ -66,7 +66,7 @@ class SleepTrackerLastNightCard extends LitElement {
     if (!this._api) return;
     try {
       this._unsub = await this._api.subscribe((state) => {
-        this._userState = state;
+        this._trackerState = state;
         this.requestUpdate();
       });
     } catch (e) {
@@ -79,18 +79,18 @@ class SleepTrackerLastNightCard extends LitElement {
   }
 
   private _navigate(): void {
-    const last = this._userState?.last_session;
+    const last = this._trackerState?.last_session;
     if (last) {
       window.location.href = `/sleep-tracker/night/${last.session_id}`;
     }
   }
 
   render() {
-    if (!this._userState) {
+    if (!this._trackerState) {
       return html`<ha-card><div class="loading">Loading...</div></ha-card>`;
     }
 
-    const last = this._userState.last_session;
+    const last = this._trackerState.last_session;
     if (!last || !last.stats) {
       return html`
         <ha-card>
