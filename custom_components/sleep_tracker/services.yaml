@@ -1,10 +1,10 @@
 start_sleep:
   name: Start sleep session
-  description: Begin tracking a sleep session for a user.
+  description: Begin tracking a sleep session for a tracker.
   fields:
-    user_id:
-      name: User ID
-      description: The Home Assistant user ID to start tracking sleep for.
+    tracker_id:
+      name: Tracker ID
+      description: The tracker ID (HA user ID for personal trackers, UUID for shared trackers like a baby).
       required: true
       selector:
         text:
@@ -30,11 +30,11 @@ start_sleep:
 
 stop_sleep:
   name: Stop sleep session
-  description: End the active sleep session for a user. Phases are materialized and the session becomes editable.
+  description: End the active sleep session for a tracker. Phases are materialized and the session becomes editable.
   fields:
-    user_id:
-      name: User ID
-      description: The Home Assistant user ID to stop tracking sleep for.
+    tracker_id:
+      name: Tracker ID
+      description: The tracker ID.
       required: true
       selector:
         text:
@@ -48,11 +48,11 @@ stop_sleep:
 
 pause_sleep:
   name: Pause sleep session
-  description: Pause the active sleep session. The user is marked as awake until the session is resumed via start_sleep.
+  description: Pause the active sleep session. The tracker is marked as awake until the session is resumed via start_sleep.
   fields:
-    user_id:
-      name: User ID
-      description: The Home Assistant user ID to pause sleep for.
+    tracker_id:
+      name: Tracker ID
+      description: The tracker ID.
       required: true
       selector:
         text:
@@ -80,9 +80,9 @@ reopen_session:
   name: Reopen sleep session
   description: Reopen a stopped (but not finalized) session, allowing new events to be appended again. Clears the materialized phases.
   fields:
-    user_id:
-      name: User ID
-      description: The Home Assistant user ID that owns the session.
+    tracker_id:
+      name: Tracker ID
+      description: The tracker ID that owns the session.
       required: true
       selector:
         text:
@@ -95,11 +95,11 @@ reopen_session:
 
 event_awake:
   name: Event - Awake
-  description: Record an "awake" event during sleep. The user just woke up after being asleep. Auto-demoted to "still_awake" if currently still in the awake state.
+  description: Record an "awake" event during sleep. The tracker just woke up after being asleep. Auto-demoted to "still_awake" if currently still in the awake state.
   fields:
-    user_id:
-      name: User ID
-      description: The Home Assistant user ID.
+    tracker_id:
+      name: Tracker ID
+      description: The tracker ID.
       required: true
       selector:
         text:
@@ -125,11 +125,11 @@ event_awake:
 
 event_still_awake:
   name: Event - Still Awake
-  description: Record a "still awake" event. Confirms the user has been awake since the last event, extending the awake window.
+  description: Record a "still awake" event. Confirms the tracker has been awake since the last event, extending the awake window.
   fields:
-    user_id:
-      name: User ID
-      description: The Home Assistant user ID.
+    tracker_id:
+      name: Tracker ID
+      description: The tracker ID.
       required: true
       selector:
         text:
@@ -157,9 +157,9 @@ event_fell_asleep:
   name: Event - Fell Asleep
   description: Record a "fell asleep" event. Forces an immediate awake-to-asleep transition at the event timestamp, bypassing the latency model. Useful for sleep ring/sensor integrations.
   fields:
-    user_id:
-      name: User ID
-      description: The Home Assistant user ID.
+    tracker_id:
+      name: Tracker ID
+      description: The tracker ID.
       required: true
       selector:
         text:

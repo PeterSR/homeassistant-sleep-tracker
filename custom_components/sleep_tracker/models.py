@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from .const import KIND_USER
+
 
 CHECKLIST_TYPE_ENTITY = "entity"
 CHECKLIST_TYPE_TEXT = "text"
@@ -77,10 +79,16 @@ class CustomEvent:
 
 
 @dataclass
-class UserConfig:
-    """Per-user sleep tracking configuration."""
+class TrackerConfig:
+    """Per-tracker sleep tracking configuration.
 
-    user_id: str
+    A "tracker" is either a personal tracker (kind="user", tracker_id == HA user id)
+    or a shared tracker (kind="shared", tracker_id == generated UUID) that any
+    authenticated user can act on (e.g. for a baby).
+    """
+
+    tracker_id: str
+    kind: str = KIND_USER  # KIND_USER | KIND_SHARED
     enabled: bool = True
     display_name: str = ""
     sleep_onset_minutes: int = 0
@@ -105,7 +113,8 @@ class UserConfig:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "user_id": self.user_id,
+            "tracker_id": self.tracker_id,
+            "kind": self.kind,
             "enabled": self.enabled,
             "display_name": self.display_name,
             "sleep_onset_minutes": self.sleep_onset_minutes,
@@ -130,9 +139,12 @@ class UserConfig:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> UserConfig:
+    def from_dict(cls, data: dict[str, Any]) -> TrackerConfig:
+        # Accept legacy "user_id" field for migration.
+        tracker_id = data.get("tracker_id") or data["user_id"]
         return cls(
-            user_id=data["user_id"],
+            tracker_id=tracker_id,
+            kind=data.get("kind", KIND_USER),
             enabled=data.get("enabled", True),
             display_name=data.get("display_name", ""),
             sleep_onset_minutes=data.get("sleep_onset_minutes", 0),
@@ -232,7 +244,7 @@ class SleepSession:
     """
 
     session_id: str
-    user_id: str
+    tracker_id: str
     started_at: str  # ISO 8601
     ended_at: str | None = None  # ISO 8601, None if active
     paused_at: str | None = None  # ISO 8601, set when session is paused
@@ -263,7 +275,7 @@ class SleepSession:
     def to_dict(self) -> dict[str, Any]:
         return {
             "session_id": self.session_id,
-            "user_id": self.user_id,
+            "tracker_id": self.tracker_id,
             "started_at": self.started_at,
             "ended_at": self.ended_at,
             "paused_at": self.paused_at,
@@ -282,9 +294,11 @@ class SleepSession:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SleepSession:
         phases_data = data.get("phases")
+        # Accept legacy "user_id" field for migration.
+        tracker_id = data.get("tracker_id") or data["user_id"]
         return cls(
             session_id=data["session_id"],
-            user_id=data["user_id"],
+            tracker_id=tracker_id,
             started_at=data["started_at"],
             ended_at=data.get("ended_at"),
             paused_at=data.get("paused_at"),

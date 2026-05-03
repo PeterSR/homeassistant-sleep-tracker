@@ -25,9 +25,9 @@ SERVICE_EVENT_STILL_AWAKE = "event_still_awake"
 SERVICE_EVENT_FELL_ASLEEP = "event_fell_asleep"
 SERVICE_EXPORT_SESSION = "export_session"
 
-SCHEMA_USER_AND_SOURCE = vol.Schema(
+SCHEMA_TRACKER_AND_SOURCE = vol.Schema(
     {
-        vol.Required("user_id"): str,
+        vol.Required("tracker_id"): str,
         vol.Optional("source", default=DEFAULT_AUTOMATION_SOURCE): str,
         vol.Optional("automation_id"): vol.Any(str, None),
         vol.Optional("automation_trigger_id"): vol.Any(str, None),
@@ -42,7 +42,7 @@ SCHEMA_SESSION_ID = vol.Schema(
 
 SCHEMA_REOPEN = vol.Schema(
     {
-        vol.Required("user_id"): str,
+        vol.Required("tracker_id"): str,
         vol.Required("session_id"): str,
     }
 )
@@ -85,7 +85,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     async def handle_start_sleep(call: ServiceCall) -> None:
         coordinator = _get_coordinator(hass)
         await coordinator.async_start_sleep(
-            user_id=call.data["user_id"],
+            tracker_id=call.data["tracker_id"],
             source=call.data["source"],
             **await _automation_kwargs(hass, call),
         )
@@ -93,14 +93,14 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     async def handle_stop_sleep(call: ServiceCall) -> None:
         coordinator = _get_coordinator(hass)
         await coordinator.async_stop_sleep(
-            user_id=call.data["user_id"],
+            tracker_id=call.data["tracker_id"],
             source=call.data["source"],
         )
 
     async def handle_pause_sleep(call: ServiceCall) -> None:
         coordinator = _get_coordinator(hass)
         await coordinator.async_pause_sleep(
-            user_id=call.data["user_id"],
+            tracker_id=call.data["tracker_id"],
             source=call.data["source"],
             **await _automation_kwargs(hass, call),
         )
@@ -108,14 +108,14 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     async def handle_reopen_session(call: ServiceCall) -> None:
         coordinator = _get_coordinator(hass)
         await coordinator.async_reopen_session(
-            user_id=call.data["user_id"],
+            tracker_id=call.data["tracker_id"],
             session_id=call.data["session_id"],
         )
 
     async def handle_event_awake(call: ServiceCall) -> None:
         coordinator = _get_coordinator(hass)
         await coordinator.async_event(
-            user_id=call.data["user_id"],
+            tracker_id=call.data["tracker_id"],
             event_type=EVENT_AWAKE,
             source=call.data["source"],
             **await _automation_kwargs(hass, call),
@@ -124,7 +124,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     async def handle_event_still_awake(call: ServiceCall) -> None:
         coordinator = _get_coordinator(hass)
         await coordinator.async_event(
-            user_id=call.data["user_id"],
+            tracker_id=call.data["tracker_id"],
             event_type=EVENT_STILL_AWAKE,
             source=call.data["source"],
             **await _automation_kwargs(hass, call),
@@ -133,7 +133,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     async def handle_event_fell_asleep(call: ServiceCall) -> None:
         coordinator = _get_coordinator(hass)
         await coordinator.async_event(
-            user_id=call.data["user_id"],
+            tracker_id=call.data["tracker_id"],
             event_type=EVENT_FELL_ASLEEP,
             source=call.data["source"],
             **await _automation_kwargs(hass, call),
@@ -147,15 +147,15 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     hass.services.async_register(
         DOMAIN, SERVICE_START_SLEEP, handle_start_sleep,
-        schema=SCHEMA_USER_AND_SOURCE,
+        schema=SCHEMA_TRACKER_AND_SOURCE,
     )
     hass.services.async_register(
         DOMAIN, SERVICE_STOP_SLEEP, handle_stop_sleep,
-        schema=SCHEMA_USER_AND_SOURCE,
+        schema=SCHEMA_TRACKER_AND_SOURCE,
     )
     hass.services.async_register(
         DOMAIN, SERVICE_PAUSE_SLEEP, handle_pause_sleep,
-        schema=SCHEMA_USER_AND_SOURCE,
+        schema=SCHEMA_TRACKER_AND_SOURCE,
     )
     hass.services.async_register(
         DOMAIN, SERVICE_REOPEN_SESSION, handle_reopen_session,
@@ -163,15 +163,15 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     )
     hass.services.async_register(
         DOMAIN, SERVICE_EVENT_AWAKE, handle_event_awake,
-        schema=SCHEMA_USER_AND_SOURCE,
+        schema=SCHEMA_TRACKER_AND_SOURCE,
     )
     hass.services.async_register(
         DOMAIN, SERVICE_EVENT_STILL_AWAKE, handle_event_still_awake,
-        schema=SCHEMA_USER_AND_SOURCE,
+        schema=SCHEMA_TRACKER_AND_SOURCE,
     )
     hass.services.async_register(
         DOMAIN, SERVICE_EVENT_FELL_ASLEEP, handle_event_fell_asleep,
-        schema=SCHEMA_USER_AND_SOURCE,
+        schema=SCHEMA_TRACKER_AND_SOURCE,
     )
     hass.services.async_register(
         DOMAIN, SERVICE_EXPORT_SESSION, handle_export_session,

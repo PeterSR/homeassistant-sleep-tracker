@@ -31,28 +31,28 @@ async def async_setup_entry(
     """Set up sensor entities."""
     coordinator: SleepTrackerCoordinator = hass.data[DOMAIN]["coordinator"]
 
-    # Store callback for dynamic entity creation when users opt in
+    # Store callback for dynamic entity creation when trackers are added
     hass.data[DOMAIN]["async_add_sensor_entities"] = async_add_entities
 
-    # Create entities for already-configured users
+    # Create entities for already-configured trackers
     entities = []
-    for user_id in coordinator.store.users:
-        entities.extend(create_user_sensors(coordinator, user_id))
+    for tracker_id in coordinator.store.trackers:
+        entities.extend(create_tracker_sensors(coordinator, tracker_id))
 
     if entities:
         async_add_entities(entities)
 
 
-def create_user_sensors(
-    coordinator: SleepTrackerCoordinator, user_id: str
+def create_tracker_sensors(
+    coordinator: SleepTrackerCoordinator, tracker_id: str
 ) -> list[SensorEntity]:
-    """Create sensor entities for a user."""
+    """Create sensor entities for a tracker."""
     return [
-        LastAwakeSensor(coordinator, user_id),
-        SessionStartSensor(coordinator, user_id),
-        SleepDurationSensor(coordinator, user_id),
-        AwakeCountSensor(coordinator, user_id),
-        PhaseSensor(coordinator, user_id),
+        LastAwakeSensor(coordinator, tracker_id),
+        SessionStartSensor(coordinator, tracker_id),
+        SleepDurationSensor(coordinator, tracker_id),
+        AwakeCountSensor(coordinator, tracker_id),
+        PhaseSensor(coordinator, tracker_id),
     ]
 
 
@@ -62,18 +62,18 @@ class _SleepTrackerSensorBase(SensorEntity):
     _attr_should_poll = False
 
     def __init__(
-        self, coordinator: SleepTrackerCoordinator, user_id: str
+        self, coordinator: SleepTrackerCoordinator, tracker_id: str
     ) -> None:
         self._coordinator = coordinator
-        self._user_id = user_id
+        self._tracker_id = tracker_id
         self._unsub: Callable[[], None] | None = None
 
-        config = coordinator.store.get_user_config(user_id)
-        self._display_name = config.display_name if config else user_id[:8]
+        config = coordinator.store.get_tracker_config(tracker_id)
+        self._display_name = config.display_name if config else tracker_id[:8]
         self._slug = slugify(self._display_name)
 
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, user_id)},
+            identifiers={(DOMAIN, tracker_id)},
             name=f"Sleep Tracker ({self._display_name})",
             manufacturer="Sleep Tracker",
             model="Virtual",
@@ -81,8 +81,8 @@ class _SleepTrackerSensorBase(SensorEntity):
         )
 
     async def async_added_to_hass(self) -> None:
-        self._unsub = self._coordinator.add_user_listener(
-            self._user_id, self._handle_update
+        self._unsub = self._coordinator.add_tracker_listener(
+            self._tracker_id, self._handle_update
         )
         self._update_from_coordinator()
 
@@ -106,22 +106,22 @@ class LastAwakeSensor(_SleepTrackerSensorBase):
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:eye-outline"
 
-    def __init__(self, coordinator, user_id):
-        super().__init__(coordinator, user_id)
-        self._attr_unique_id = f"sleep_tracker_{user_id}_last_awake"
+    def __init__(self, coordinator, tracker_id):
+        super().__init__(coordinator, tracker_id)
+        self._attr_unique_id = f"sleep_tracker_{tracker_id}_last_awake"
         self.entity_id = f"sensor.sleep_tracker_{self._slug}_last_awake"
         self._attr_name = f"Sleep Tracker {self._display_name} Last Awake"
 
     @callback
     def _update_from_coordinator(self) -> None:
-        session = self._coordinator.store.get_active_session(self._user_id)
+        session = self._coordinator.store.get_active_session(self._tracker_id)
         if session and session.events:
             last_event = session.events[-1]
             self._attr_native_value = datetime.fromisoformat(last_event.timestamp)
         elif not session:
             # Check last completed session
-            history = self._coordinator.store.get_user_sessions(
-                self._user_id, limit=1
+            history = self._coordinator.store.get_tracker_sessions(
+                self._tracker_id, limit=1
             )
             if history and history[0].events:
                 last_event = history[0].events[-1]
@@ -140,20 +140,20 @@ class SessionStartSensor(_SleepTrackerSensorBase):
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:bed-clock"
 
-    def __init__(self, coordinator, user_id):
-        super().__init__(coordinator, user_id)
-        self._attr_unique_id = f"sleep_tracker_{user_id}_session_start"
+    def __init__(self, coordinator, tracker_id):
+        super().__init__(coordinator, tracker_id)
+        self._attr_unique_id = f"sleep_tracker_{tracker_id}_session_start"
         self.entity_id = f"sensor.sleep_tracker_{self._slug}_session_start"
         self._attr_name = f"Sleep Tracker {self._display_name} Session Start"
 
     @callback
     def _update_from_coordinator(self) -> None:
-        session = self._coordinator.store.get_active_session(self._user_id)
+        session = self._coordinator.store.get_active_session(self._tracker_id)
         if session:
             self._attr_native_value = datetime.fromisoformat(session.started_at)
         else:
-            history = self._coordinator.store.get_user_sessions(
-                self._user_id, limit=1
+            history = self._coordinator.store.get_tracker_sessions(
+                self._tracker_id, limit=1
             )
             if history:
                 self._attr_native_value = datetime.fromisoformat(
@@ -170,16 +170,16 @@ class SleepDurationSensor(_SleepTrackerSensorBase):
     _attr_native_unit_of_measurement = UnitOfTime.MINUTES
     _attr_icon = "mdi:clock-time-eight-outline"
 
-    def __init__(self, coordinator, user_id):
-        super().__init__(coordinator, user_id)
-        self._attr_unique_id = f"sleep_tracker_{user_id}_sleep_duration"
+    def __init__(self, coordinator, tracker_id):
+        super().__init__(coordinator, tracker_id)
+        self._attr_unique_id = f"sleep_tracker_{tracker_id}_sleep_duration"
         self.entity_id = f"sensor.sleep_tracker_{self._slug}_sleep_duration"
         self._attr_name = f"Sleep Tracker {self._display_name} Sleep Duration"
 
     @callback
     def _update_from_coordinator(self) -> None:
-        history = self._coordinator.store.get_user_sessions(
-            self._user_id, limit=1
+        history = self._coordinator.store.get_tracker_sessions(
+            self._tracker_id, limit=1
         )
         if history:
             stats = self._coordinator.get_session_stats(history[0])
@@ -196,15 +196,15 @@ class PhaseSensor(_SleepTrackerSensorBase):
     _attr_options = [PHASE_AWAKE, PHASE_ASLEEP]
     _attr_icon = "mdi:sleep"
 
-    def __init__(self, coordinator, user_id):
-        super().__init__(coordinator, user_id)
-        self._attr_unique_id = f"sleep_tracker_{user_id}_phase"
+    def __init__(self, coordinator, tracker_id):
+        super().__init__(coordinator, tracker_id)
+        self._attr_unique_id = f"sleep_tracker_{tracker_id}_phase"
         self.entity_id = f"sensor.sleep_tracker_{self._slug}_phase"
         self._attr_name = f"Sleep Tracker {self._display_name} Phase"
 
     @callback
     def _update_from_coordinator(self) -> None:
-        state = self._coordinator.get_current_phase_state(self._user_id)
+        state = self._coordinator.get_current_phase_state(self._tracker_id)
         self._attr_native_value = state
         self._attr_icon = (
             "mdi:sleep" if state == PHASE_ASLEEP else "mdi:sleep-off"
@@ -217,19 +217,19 @@ class AwakeCountSensor(_SleepTrackerSensorBase):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:bell-ring-outline"
 
-    def __init__(self, coordinator, user_id):
-        super().__init__(coordinator, user_id)
-        self._attr_unique_id = f"sleep_tracker_{user_id}_awake_count"
+    def __init__(self, coordinator, tracker_id):
+        super().__init__(coordinator, tracker_id)
+        self._attr_unique_id = f"sleep_tracker_{tracker_id}_awake_count"
         self.entity_id = f"sensor.sleep_tracker_{self._slug}_awake_count"
         self._attr_name = f"Sleep Tracker {self._display_name} Awake Count"
 
     @callback
     def _update_from_coordinator(self) -> None:
         # Prefer active session, fall back to last completed
-        session = self._coordinator.store.get_active_session(self._user_id)
+        session = self._coordinator.store.get_active_session(self._tracker_id)
         if not session:
-            history = self._coordinator.store.get_user_sessions(
-                self._user_id, limit=1
+            history = self._coordinator.store.get_tracker_sessions(
+                self._tracker_id, limit=1
             )
             session = history[0] if history else None
 

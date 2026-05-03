@@ -1,9 +1,12 @@
 """Constants for Sleep Tracker integration."""
 
 DOMAIN = "sleep_tracker"
-VERSION = "0.5.2"
+VERSION = "0.6.0"
 STORAGE_KEY = "sleep_tracker"
 STORAGE_VERSION = 1
+
+KIND_USER = "user"
+KIND_SHARED = "shared"
 
 DEFAULT_AUTOMATION_SOURCE = "automation"
 DEFAULT_PANEL_SOURCE = "panel"

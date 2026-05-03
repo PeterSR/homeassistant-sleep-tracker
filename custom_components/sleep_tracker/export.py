@@ -39,9 +39,9 @@ async def async_export_session(
     if session.is_active:
         raise ExportError("Cannot export an active session")
 
-    config = coordinator.store.get_user_config(session.user_id)
+    config = coordinator.store.get_tracker_config(session.tracker_id)
     if config is None or not config.export_url:
-        raise ExportError("No export URL configured for this user")
+        raise ExportError("No export URL configured for this tracker")
 
     # Prefer stored (edited) phases; fall back to materializing from events
     if session.phases is not None:
@@ -58,7 +58,7 @@ async def async_export_session(
 
     payload = {
         "session_id": session.session_id,
-        "user_id": session.user_id,
+        "tracker_id": session.tracker_id,
         "started_at": session.started_at,
         "ended_at": session.ended_at,
         "events": [e.to_dict() for e in session.events],

@@ -25,47 +25,47 @@ async def async_setup_entry(
     """Set up binary sensor entities."""
     coordinator: SleepTrackerCoordinator = hass.data[DOMAIN]["coordinator"]
 
-    # Store callback for dynamic entity creation when users opt in
+    # Store callback for dynamic entity creation when trackers are added
     hass.data[DOMAIN]["async_add_binary_sensor_entities"] = async_add_entities
 
-    # Create entities for already-configured users
+    # Create entities for already-configured trackers
     entities = []
-    for user_id in coordinator.store.users:
-        entities.extend(create_user_binary_sensors(coordinator, user_id))
+    for tracker_id in coordinator.store.trackers:
+        entities.extend(create_tracker_binary_sensors(coordinator, tracker_id))
 
     if entities:
         async_add_entities(entities)
 
 
-def create_user_binary_sensors(
-    coordinator: SleepTrackerCoordinator, user_id: str
+def create_tracker_binary_sensors(
+    coordinator: SleepTrackerCoordinator, tracker_id: str
 ) -> list[BinarySensorEntity]:
-    """Create binary sensor entities for a user."""
-    return [InSessionSensor(coordinator, user_id)]
+    """Create binary sensor entities for a tracker."""
+    return [InSessionSensor(coordinator, tracker_id)]
 
 
 class InSessionSensor(BinarySensorEntity):
-    """Binary sensor indicating whether the user is in a sleep session (active or paused)."""
+    """Binary sensor indicating whether the tracker is in a sleep session (active or paused)."""
 
     _attr_should_poll = False
     _attr_icon = "mdi:bed"
 
     def __init__(
-        self, coordinator: SleepTrackerCoordinator, user_id: str
+        self, coordinator: SleepTrackerCoordinator, tracker_id: str
     ) -> None:
         self._coordinator = coordinator
-        self._user_id = user_id
+        self._tracker_id = tracker_id
         self._unsub: Callable[[], None] | None = None
 
-        config = coordinator.store.get_user_config(user_id)
-        display_name = config.display_name if config else user_id[:8]
+        config = coordinator.store.get_tracker_config(tracker_id)
+        display_name = config.display_name if config else tracker_id[:8]
         slug = slugify(display_name)
 
-        self._attr_unique_id = f"sleep_tracker_{user_id}_in_session"
+        self._attr_unique_id = f"sleep_tracker_{tracker_id}_in_session"
         self.entity_id = f"binary_sensor.sleep_tracker_{slug}_in_session"
         self._attr_name = f"Sleep Tracker {display_name} In Session"
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, user_id)},
+            identifiers={(DOMAIN, tracker_id)},
             name=f"Sleep Tracker ({display_name})",
             manufacturer="Sleep Tracker",
             model="Virtual",
@@ -73,8 +73,8 @@ class InSessionSensor(BinarySensorEntity):
         )
 
     async def async_added_to_hass(self) -> None:
-        self._unsub = self._coordinator.add_user_listener(
-            self._user_id, self._handle_update
+        self._unsub = self._coordinator.add_tracker_listener(
+            self._tracker_id, self._handle_update
         )
         self._update_from_coordinator()
 
@@ -89,6 +89,6 @@ class InSessionSensor(BinarySensorEntity):
 
     @callback
     def _update_from_coordinator(self) -> None:
-        session = self._coordinator.store.get_active_session(self._user_id)
+        session = self._coordinator.store.get_active_session(self._tracker_id)
         self._attr_is_on = session is not None
         self._attr_icon = "mdi:bed" if self._attr_is_on else "mdi:bed-empty"
