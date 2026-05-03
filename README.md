@@ -1,12 +1,12 @@
 # Sleep Tracker for Home Assistant
 
-Per-user sleep tracking with pulse-based timeline reconstruction, a sidebar panel, and REST export.
+Per-tracker sleep tracking with pulse-based timeline reconstruction, a sidebar panel, and REST export.
 
-Each Home Assistant user opts in from a sidebar panel and gets their own sessions, timeline, stats, and sensors. No polling, no tick loop — state advances from events: start, stop, pause, and optional "awake" / "still awake" / "fell asleep" pulses from your phone, a button, a sleep ring, or any automation.
+A "tracker" is either personal (one per HA user, isolated data) or shared (e.g. for a baby — visible and controllable by every authenticated user). Each tracker has its own sessions, timeline, stats, and sensors. No polling, no tick loop — state advances from events: start, stop, pause, and optional "awake" / "still awake" / "fell asleep" pulses from your phone, a button, a sleep ring, or any automation.
 
 ## Features
 
-- **Per-user sessions** — each HA user has isolated data, sensors, and settings.
+- **Personal + shared trackers** — each HA user has a private tracker; create additional shared trackers (kids, pets, anyone without their own HA account) that everyone in the household can act on.
 - **Event-driven timeline** — asleep / awake phases are reconstructed from the event stream plus configurable fall-asleep latency and awakening grace.
 - **Editable nights** — once a session ends, phases are materialized and can be adjusted on the detail view.
 - **Bedtime checklist** — entity-state checks (e.g. "bedroom lights off") and plain-text reminders.
@@ -32,11 +32,16 @@ Each Home Assistant user opts in from a sidebar panel and gets their own session
 
 ## Configuration
 
-The integration is a singleton — add it once. Per-user setup happens in the sidebar panel: each user opens **Sleep Tracker** and enables tracking for themselves. All preferences (sleep-onset delay, awakening grace, checklist, custom events, tags, environment entities, nightly goal, REST export) are stored per user.
+The integration is a singleton — add it once. Setup happens in the sidebar panel:
+
+- **Personal tracker** — each user opens **Sleep Tracker** and clicks *Enable for me*.
+- **Shared tracker** — anyone can use *Add a shared tracker* (e.g. "Baby") from the setup screen, the toolbar switcher, or the Settings → Shared trackers card. Shared trackers have a generated UUID and are accessible to every authenticated user.
+
+The toolbar dropdown switches between accessible trackers. All preferences (sleep-onset delay, awakening grace, checklist, custom events, tags, environment entities, nightly goal, REST export) are stored per tracker.
 
 ## Entities
 
-For each enabled user (`{slug}` = slugified display name):
+For each tracker (`{slug}` = slugified display name):
 
 | Entity | Type | State |
 |---|---|---|
@@ -55,16 +60,16 @@ All services live under the `sleep_tracker` domain — open **Developer Tools �
 
 | Service | Purpose |
 |---|---|
-| `start_sleep` | Begin a session for a user (also resumes a paused session). |
+| `start_sleep` | Begin a session for a tracker (also resumes a paused session). |
 | `stop_sleep` | End the active session; phases are materialized and become editable. |
-| `pause_sleep` | Temporarily halt tracking; user counts as awake until resumed. |
+| `pause_sleep` | Temporarily halt tracking; the tracker counts as awake until resumed. |
 | `reopen_session` | Reopen a stopped-but-not-finalized session to append new events. |
 | `event_awake` | Record an "awake" pulse (auto-demoted to `still_awake` if already awake). |
 | `event_still_awake` | Extend the awake window — no state change. |
 | `event_fell_asleep` | Force an immediate asleep transition, bypassing the latency model. |
 | `export_session` | POST a finalized session to the configured REST endpoint. |
 
-All user-facing services take `user_id`. Most accept optional `source`, `automation_id`, and `automation_trigger_id` for provenance — these show up in the session's event review so you can tell which automation fired what.
+All tracker-facing services take `tracker_id`. For a personal tracker this is the HA user id (`{{ states.person.peter.attributes.user_id }}`); for a shared tracker, copy the id from **Settings → Tracker ID** in the panel. Most services also accept optional `source`, `automation_id`, and `automation_trigger_id` for provenance — these show up in the session's event review so you can tell which automation fired what.
 
 ## Automation example
 
@@ -81,7 +86,7 @@ condition:
 action:
   - service: sleep_tracker.start_sleep
     data:
-      user_id: "{{ states.person.peter.attributes.user_id }}"
+      tracker_id: "{{ states.person.peter.attributes.user_id }}"
       source: phone_charger
       automation_id: "{{ this.entity_id }}"
       automation_trigger_id: "{{ trigger.id }}"
