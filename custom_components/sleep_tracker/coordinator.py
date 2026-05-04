@@ -690,6 +690,35 @@ class SleepTrackerCoordinator:
             return PHASE_ASLEEP
         return PHASE_AWAKE
 
+    def get_next_phase_transition(self, tracker_id: str) -> datetime | None:
+        """Return the UTC time of the next time-based phase transition, or None.
+
+        For an active, non-paused session, materialize phases far into the
+        future and find the first transition strictly after now. This is the
+        moment the latency timer would flip the phase awake → asleep without
+        any new event. PhaseSensor uses this to schedule a self-update so its
+        state stops being stale between events.
+        """
+        session = self.store.get_active_session(tracker_id)
+        if session is None or session.paused_at is not None:
+            return None
+
+        now = dt_util.utcnow()
+        far_future = now + timedelta(days=365)
+        params = self._get_tracker_timeline_params(tracker_id)
+        phases = materialize_phases(
+            session.started_at,
+            None,
+            session.events,
+            **params,
+            now=far_future,
+        )
+        for phase in phases:
+            start = datetime.fromisoformat(phase.start)
+            if start > now:
+                return start
+        return None
+
     # --- Session completion (event review → phase editing) ---
 
     async def async_complete_session(

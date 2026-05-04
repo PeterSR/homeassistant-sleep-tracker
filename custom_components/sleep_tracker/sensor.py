@@ -12,9 +12,10 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTime
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_track_point_in_utc_time
 from homeassistant.util import slugify
 
 from .const import DOMAIN, EVENT_AWAKE, PHASE_ASLEEP, PHASE_AWAKE
@@ -190,7 +191,12 @@ class SleepDurationSensor(_SleepTrackerSensorBase):
 
 
 class PhaseSensor(_SleepTrackerSensorBase):
-    """Enum sensor: "awake" when no session or paused; live phase state when active."""
+    """Enum sensor: "awake" when no session or paused; live phase state when active.
+
+    The phase can transition awake → asleep purely on time (latency timer)
+    without any incoming event. This sensor schedules a one-shot timer at the
+    next transition so its state doesn't go stale between events.
+    """
 
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = [PHASE_AWAKE, PHASE_ASLEEP]
@@ -201,6 +207,13 @@ class PhaseSensor(_SleepTrackerSensorBase):
         self._attr_unique_id = f"sleep_tracker_{tracker_id}_phase"
         self.entity_id = f"sensor.sleep_tracker_{self._slug}_phase"
         self._attr_name = f"Sleep Tracker {self._display_name} Phase"
+        self._unsub_transition: CALLBACK_TYPE | None = None
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._unsub_transition:
+            self._unsub_transition()
+            self._unsub_transition = None
+        await super().async_will_remove_from_hass()
 
     @callback
     def _update_from_coordinator(self) -> None:
@@ -209,6 +222,24 @@ class PhaseSensor(_SleepTrackerSensorBase):
         self._attr_icon = (
             "mdi:sleep" if state == PHASE_ASLEEP else "mdi:sleep-off"
         )
+        self._reschedule_transition()
+
+    @callback
+    def _reschedule_transition(self) -> None:
+        if self._unsub_transition:
+            self._unsub_transition()
+            self._unsub_transition = None
+        next_t = self._coordinator.get_next_phase_transition(self._tracker_id)
+        if next_t is not None:
+            self._unsub_transition = async_track_point_in_utc_time(
+                self.hass, self._handle_transition, next_t
+            )
+
+    @callback
+    def _handle_transition(self, _now) -> None:
+        self._unsub_transition = None
+        self._update_from_coordinator()
+        self.async_write_ha_state()
 
 
 class AwakeCountSensor(_SleepTrackerSensorBase):
