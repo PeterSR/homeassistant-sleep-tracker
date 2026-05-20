@@ -48,6 +48,7 @@ export class SleepTrackerPanel extends LitElement {
     this.addEventListener("sleep-tracker-state-update", this._refreshState as EventListener);
     this.addEventListener("sleep-tracker-trackers-update", this._refreshTrackers as EventListener);
     this.addEventListener("sleep-tracker-prefs-update", this._refreshPrefs as EventListener);
+    this.addEventListener("sleep-tracker-select-tracker", this._onSelectTrackerEvent as EventListener);
     this._lastConnection = undefined;
     if (customElements.get("ha-card")) {
       this._haReady = true;
@@ -64,6 +65,7 @@ export class SleepTrackerPanel extends LitElement {
     this.removeEventListener("sleep-tracker-state-update", this._refreshState as EventListener);
     this.removeEventListener("sleep-tracker-trackers-update", this._refreshTrackers as EventListener);
     this.removeEventListener("sleep-tracker-prefs-update", this._refreshPrefs as EventListener);
+    this.removeEventListener("sleep-tracker-select-tracker", this._onSelectTrackerEvent as EventListener);
     this._unsubscribe();
   }
 
@@ -82,6 +84,11 @@ export class SleepTrackerPanel extends LitElement {
 
   private _refreshPrefs = async (): Promise<void> => {
     await this._loadUserPrefs();
+  };
+
+  private _onSelectTrackerEvent = (e: CustomEvent<{ trackerId: string }>): void => {
+    const id = e.detail?.trackerId;
+    if (id) this._selectTracker(id);
   };
 
   willUpdate(changed: PropertyValues): void {
@@ -164,8 +171,11 @@ export class SleepTrackerPanel extends LitElement {
     this._switcherOpen = false;
     this._trackerState = null;
     this._subscribe();
-    // Navigate back to the main view to avoid showing data from the previous tracker
-    this.navigate("/");
+    // Navigate back to main to avoid showing data from the previous tracker,
+    // except on Settings (where the user is switching to view another tracker's config).
+    if (this._path !== "/settings") {
+      this.navigate("/");
+    }
   }
 
   private async _subscribe(): Promise<void> {

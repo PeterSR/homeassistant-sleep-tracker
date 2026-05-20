@@ -67,6 +67,7 @@ export class SettingsView extends LitElement {
   @state() private _renameValue = "";
   @state() private _newSharedName = "";
   @state() private _addingShared = false;
+  @state() private _switcherOpen = false;
 
   private _copiedTimeoutId: number | null = null;
 
@@ -469,6 +470,27 @@ export class SettingsView extends LitElement {
         bubbles: true,
         composed: true,
         detail: { entityId },
+      })
+    );
+  }
+
+  private _toggleSwitcher = (e: Event) => {
+    e.stopPropagation();
+    this._switcherOpen = !this._switcherOpen;
+  };
+
+  private _closeSwitcher = () => {
+    this._switcherOpen = false;
+  };
+
+  private _selectTracker(trackerId: string) {
+    this._switcherOpen = false;
+    if (trackerId === this.selectedTrackerId) return;
+    this.dispatchEvent(
+      new CustomEvent("sleep-tracker-select-tracker", {
+        bubbles: true,
+        composed: true,
+        detail: { trackerId },
       })
     );
   }
@@ -906,15 +928,30 @@ data:
     const uid = this.trackerState.config.tracker_id;
     const config = this.trackerState.config;
 
+    const haUserId = this.hass?.user?.id;
+    const canSwitch = (this.trackers || []).length > 1;
+
     return html`
-      <div class="container">
+      <div class="container" @click=${this._closeSwitcher}>
         <ha-card class="info-card tracker-card">
           <div class="tracker-header">
-            <ha-icon icon=${config.kind === "shared" ? "mdi:account-multiple" : "mdi:account"}></ha-icon>
-            <div class="tracker-header-info">
-              <span class="tracker-header-name">${config.display_name}</span>
-              <span class="tracker-header-kind">${config.kind === "shared" ? "Shared tracker" : "Personal tracker"}</span>
-            </div>
+            <button
+              class=${canSwitch ? "tracker-header-main switchable" : "tracker-header-main"}
+              ?disabled=${!canSwitch}
+              @click=${canSwitch ? this._toggleSwitcher : undefined}
+            >
+              <ha-icon icon=${config.kind === "shared" ? "mdi:account-multiple" : "mdi:account"}></ha-icon>
+              <div class="tracker-header-info">
+                <span class="tracker-header-name">${config.display_name}</span>
+                <span class="tracker-header-kind">${config.kind === "shared" ? "Shared tracker" : "Personal tracker"}</span>
+              </div>
+              ${canSwitch
+                ? html`<ha-icon
+                    class="tracker-header-caret"
+                    icon=${this._switcherOpen ? "mdi:menu-up" : "mdi:menu-down"}
+                  ></ha-icon>`
+                : nothing}
+            </button>
             <button class="link-btn" @click=${this._openRenameWizard}>
               <ha-icon icon="mdi:pencil-outline"></ha-icon>
               Rename
@@ -928,6 +965,31 @@ data:
                 `
               : nothing}
           </div>
+          ${this._switcherOpen && canSwitch
+            ? html`
+                <div class="tracker-switcher-menu" @click=${(e: Event) => e.stopPropagation()}>
+                  ${(this.trackers || []).map((t) => {
+                    const isSelf = t.kind === "user" && t.tracker_id === haUserId;
+                    const active = t.tracker_id === this.selectedTrackerId;
+                    return html`
+                      <button
+                        class=${active ? "switcher-item active" : "switcher-item"}
+                        @click=${() => this._selectTracker(t.tracker_id)}
+                      >
+                        <ha-icon icon=${t.kind === "shared" ? "mdi:account-multiple" : "mdi:account"}></ha-icon>
+                        <span class="switcher-item-name">${t.display_name}</span>
+                        ${isSelf
+                          ? html`<span class="switcher-item-tag">you</span>`
+                          : t.kind === "shared"
+                            ? html`<span class="switcher-item-tag shared">shared</span>`
+                            : nothing}
+                        ${active ? html`<ha-icon icon="mdi:check"></ha-icon>` : nothing}
+                      </button>
+                    `;
+                  })}
+                </div>
+              `
+            : nothing}
         </ha-card>
 
         ${this._renderManageTrackers()}
@@ -2013,6 +2075,86 @@ data:
       }
       .radio-info .range-value {
         text-align: left;
+      }
+      .tracker-header-main {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: var(--ha-space-3, 12px);
+        min-width: 0;
+        background: none;
+        border: none;
+        padding: 0;
+        color: inherit;
+        font-family: inherit;
+        text-align: left;
+      }
+      .tracker-header-main.switchable {
+        cursor: pointer;
+        border-radius: var(--ha-border-radius-md, 8px);
+        padding: var(--ha-space-1, 4px) var(--ha-space-2, 8px);
+        margin: calc(-1 * var(--ha-space-1, 4px)) calc(-1 * var(--ha-space-2, 8px));
+        transition: background 0.15s;
+      }
+      .tracker-header-main.switchable:hover {
+        background: var(--secondary-background-color, #f5f5f5);
+      }
+      .tracker-header-caret {
+        --mdc-icon-size: 20px;
+        color: var(--secondary-text-color);
+        flex-shrink: 0;
+      }
+      .tracker-switcher-menu {
+        margin-top: var(--ha-space-3, 12px);
+        border-top: 1px solid var(--divider-color, #e0e0e0);
+        padding-top: var(--ha-space-2, 8px);
+        display: flex;
+        flex-direction: column;
+      }
+      .switcher-item {
+        display: flex;
+        align-items: center;
+        gap: var(--ha-space-2, 8px);
+        width: 100%;
+        padding: var(--ha-space-2, 8px) var(--ha-space-3, 12px);
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: var(--primary-text-color);
+        font-family: inherit;
+        font-size: var(--ha-font-size-m, 14px);
+        text-align: left;
+        border-radius: var(--ha-border-radius-md, 8px);
+      }
+      .switcher-item:hover {
+        background: var(--secondary-background-color, #f5f5f5);
+      }
+      .switcher-item.active {
+        font-weight: var(--ha-font-weight-medium, 500);
+      }
+      .switcher-item ha-icon {
+        --mdc-icon-size: 18px;
+        color: var(--secondary-text-color);
+        flex-shrink: 0;
+      }
+      .switcher-item-name {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .switcher-item-tag {
+        font-size: var(--ha-font-size-xs, 10px);
+        text-transform: uppercase;
+        background: var(--secondary-background-color, #f0f0f0);
+        color: var(--secondary-text-color);
+        padding: 1px 6px;
+        border-radius: 999px;
+        flex-shrink: 0;
+      }
+      .switcher-item-tag.shared {
+        background: rgba(0, 114, 178, 0.15);
+        color: var(--sleep-color-asleep, #0072B2);
       }
     `,
   ];
