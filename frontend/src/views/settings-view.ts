@@ -7,6 +7,8 @@ import type {
   ToolbarConfig,
   TrackerConfig,
   TrackerState,
+  TrackerSwitcherVisibility,
+  UserPreferences,
 } from "../types";
 import type { SleepTrackerApi } from "../api";
 import { tokens, viewStyles, formStyles, cardStyles } from "../styles";
@@ -19,6 +21,7 @@ export class SettingsView extends LitElement {
   @property({ attribute: false }) api!: SleepTrackerApi;
   @property({ attribute: false }) trackerState!: TrackerState;
   @property({ attribute: false }) trackers: TrackerConfig[] = [];
+  @property({ attribute: false }) userPreferences: UserPreferences | null = null;
   @property() selectedTrackerId: string | null = null;
   @property({ type: Boolean }) narrow = false;
 
@@ -470,6 +473,22 @@ export class SettingsView extends LitElement {
     );
   }
 
+  private async _onSwitcherVisibilityChange(value: TrackerSwitcherVisibility) {
+    try {
+      await this.api.updateUserPreferences({
+        tracker_switcher_visibility: value,
+      });
+      this.dispatchEvent(
+        new CustomEvent("sleep-tracker-prefs-update", {
+          bubbles: true,
+          composed: true,
+        })
+      );
+    } catch (err) {
+      console.error("Failed to update preferences:", err);
+    }
+  }
+
   private _notifyTrackersChanged() {
     this.dispatchEvent(
       new CustomEvent("sleep-tracker-trackers-update", {
@@ -553,6 +572,51 @@ export class SettingsView extends LitElement {
     } finally {
       this._addingShared = false;
     }
+  }
+
+  private _renderDisplayCard() {
+    const current: TrackerSwitcherVisibility =
+      this.userPreferences?.tracker_switcher_visibility ?? "multiple";
+    const options: Array<{ value: TrackerSwitcherVisibility; label: string; hint: string }> = [
+      {
+        value: "multiple",
+        label: "Only with multiple trackers",
+        hint: "Hidden until you have two or more trackers",
+      },
+      { value: "always", label: "Always show", hint: "Visible even with one tracker" },
+      { value: "never", label: "Never show", hint: "Manage trackers via Settings only" },
+    ];
+    return html`
+      <ha-card class="info-card">
+        <div class="card-header">Display</div>
+        <p class="hint">
+          Your personal UI preferences. Not tied to any tracker.
+        </p>
+
+        <div class="field">
+          <label>Tracker switcher in toolbar</label>
+          <div class="radio-list">
+            ${options.map(
+              (opt) => html`
+                <label class="radio-row">
+                  <input
+                    type="radio"
+                    name="switcher-visibility"
+                    .value=${opt.value}
+                    .checked=${current === opt.value}
+                    @change=${() => this._onSwitcherVisibilityChange(opt.value)}
+                  />
+                  <div class="radio-info">
+                    <span class="radio-label">${opt.label}</span>
+                    <span class="range-value">${opt.hint}</span>
+                  </div>
+                </label>
+              `
+            )}
+          </div>
+        </div>
+      </ha-card>
+    `;
   }
 
   private _renderRenameWizard() {
@@ -869,6 +933,8 @@ data:
         ${this._renderManageTrackers()}
 
         ${this._renameWizardOpen ? this._renderRenameWizard() : nothing}
+
+        ${this._renderDisplayCard()}
 
         <ha-card>
           <div class="card-header">Sleep Settings</div>
@@ -1916,6 +1982,37 @@ data:
       }
       .link-btn.danger:hover {
         background: rgba(213, 94, 0, 0.1);
+      }
+      .radio-list {
+        display: flex;
+        flex-direction: column;
+        gap: var(--ha-space-2, 8px);
+      }
+      .radio-row {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--ha-space-3, 12px);
+        padding: var(--ha-space-2, 8px) var(--ha-space-3, 12px);
+        background: var(--secondary-background-color, #f5f5f5);
+        border-radius: var(--ha-border-radius-md, 8px);
+        cursor: pointer;
+      }
+      .radio-row input[type="radio"] {
+        margin-top: 3px;
+        accent-color: var(--primary-color, #03a9f4);
+      }
+      .radio-info {
+        display: flex;
+        flex-direction: column;
+        gap: var(--ha-space-1, 4px);
+        flex: 1;
+      }
+      .radio-label {
+        font-size: var(--ha-font-size-m, 14px);
+        font-weight: var(--ha-font-weight-medium, 500);
+      }
+      .radio-info .range-value {
+        text-align: left;
       }
     `,
   ];

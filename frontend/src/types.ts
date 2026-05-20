@@ -149,6 +149,13 @@ export interface TrackerState {
   unfinalized_sessions?: SleepSession[];
 }
 
+export type TrackerSwitcherVisibility = "never" | "multiple" | "always";
+
+export interface UserPreferences {
+  ha_user_id: string;
+  tracker_switcher_visibility: TrackerSwitcherVisibility;
+}
+
 export interface TrackerSummary {
   tracker_id: string;
   kind: TrackerKind;

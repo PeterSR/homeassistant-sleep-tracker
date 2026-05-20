@@ -47,6 +47,7 @@ from .const import (
     USER_EVENT_TYPES,
 )
 from .models import (
+    TRACKER_SWITCHER_VALUES,
     ChecklistItem,
     CustomEvent,
     SleepEvent,
@@ -214,6 +215,29 @@ class SleepTrackerCoordinator:
                 shared.append(config.to_dict())
         shared.sort(key=lambda t: (t.get("display_name") or "").lower())
         return personal + shared
+
+    # --- User preferences ---
+
+    def get_user_preferences(self, ha_user_id: str) -> dict:
+        """Get UI preferences for a HA user (with defaults)."""
+        return self.store.get_user_preferences(ha_user_id).to_dict()
+
+    async def async_update_user_preferences(
+        self, ha_user_id: str, **kwargs: Any
+    ) -> dict:
+        """Update UI preferences for a HA user."""
+        prefs = self.store.get_user_preferences(ha_user_id)
+
+        if "tracker_switcher_visibility" in kwargs:
+            value = kwargs["tracker_switcher_visibility"]
+            if value not in TRACKER_SWITCHER_VALUES:
+                raise HomeAssistantError(
+                    f"Invalid tracker_switcher_visibility: {value}"
+                )
+            prefs.tracker_switcher_visibility = value
+
+        self.store.set_user_preferences(prefs)
+        return prefs.to_dict()
 
     async def async_update_tracker_config(
         self, tracker_id: str, **kwargs: Any

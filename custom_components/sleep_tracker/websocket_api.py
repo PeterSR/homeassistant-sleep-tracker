@@ -18,7 +18,11 @@ from .const import (
     EVENT_STILL_AWAKE,
     KIND_USER,
 )
-from .models import CHECKLIST_TYPE_ENTITY, CHECKLIST_TYPE_TEXT
+from .models import (
+    CHECKLIST_TYPE_ENTITY,
+    CHECKLIST_TYPE_TEXT,
+    TRACKER_SWITCHER_VALUES,
+)
 
 _MAX_ID_LEN = 64
 _MAX_LABEL_LEN = 128
@@ -112,6 +116,8 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_unfinalize_session)
     websocket_api.async_register_command(hass, ws_export_session)
     websocket_api.async_register_command(hass, ws_subscribe)
+    websocket_api.async_register_command(hass, ws_get_user_preferences)
+    websocket_api.async_register_command(hass, ws_update_user_preferences)
 
 
 def _get_coordinator(hass: HomeAssistant):
@@ -967,6 +973,45 @@ async def ws_export_session(
         connection.send_result(msg["id"], {"success": True})
     except ExportError as err:
         connection.send_error(msg["id"], "export_failed", str(err))
+
+
+# --- User preferences ---
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): "sleep_tracker/get_user_preferences"}
+)
+@websocket_api.async_response
+async def ws_get_user_preferences(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Get UI preferences for the connection user."""
+    coordinator = _get_coordinator(hass)
+    prefs = coordinator.get_user_preferences(connection.user.id)
+    connection.send_result(msg["id"], prefs)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "sleep_tracker/update_user_preferences",
+        vol.Optional("tracker_switcher_visibility"): vol.In(TRACKER_SWITCHER_VALUES),
+    }
+)
+@websocket_api.async_response
+async def ws_update_user_preferences(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Update UI preferences for the connection user."""
+    coordinator = _get_coordinator(hass)
+    updates = {
+        k: msg[k] for k in ("tracker_switcher_visibility",) if k in msg
+    }
+    try:
+        prefs = await coordinator.async_update_user_preferences(
+            connection.user.id, **updates
+        )
+        connection.send_result(msg["id"], prefs)
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "update_failed", str(err))
 
 
 # --- Subscribe ---

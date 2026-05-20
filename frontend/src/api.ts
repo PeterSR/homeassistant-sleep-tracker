@@ -5,6 +5,7 @@ import type {
   StatsData,
   TrackerConfig,
   TrackerState,
+  UserPreferences,
 } from "./types";
 
 /**
@@ -311,6 +312,21 @@ export class SleepTrackerApi {
       type: "sleep_tracker/export_session",
       session_id,
     }));
+  }
+
+  // --- User preferences ---
+
+  async getUserPreferences(): Promise<UserPreferences> {
+    return this.hass.callWS({ type: "sleep_tracker/get_user_preferences" });
+  }
+
+  async updateUserPreferences(
+    updates: Partial<Pick<UserPreferences, "tracker_switcher_visibility">>
+  ): Promise<UserPreferences> {
+    return this.hass.callWS({
+      type: "sleep_tracker/update_user_preferences",
+      ...updates,
+    });
   }
 
   subscribe(callback: (state: TrackerState) => void): Promise<() => void> {

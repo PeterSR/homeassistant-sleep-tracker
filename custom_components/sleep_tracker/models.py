@@ -11,6 +11,41 @@ from .const import KIND_USER
 CHECKLIST_TYPE_ENTITY = "entity"
 CHECKLIST_TYPE_TEXT = "text"
 
+TRACKER_SWITCHER_NEVER = "never"
+TRACKER_SWITCHER_MULTIPLE = "multiple"
+TRACKER_SWITCHER_ALWAYS = "always"
+TRACKER_SWITCHER_VALUES = (
+    TRACKER_SWITCHER_NEVER,
+    TRACKER_SWITCHER_MULTIPLE,
+    TRACKER_SWITCHER_ALWAYS,
+)
+
+
+@dataclass
+class UserPreferences:
+    """Per-HA-user UI preferences (not tied to any tracker)."""
+
+    ha_user_id: str
+    tracker_switcher_visibility: str = TRACKER_SWITCHER_MULTIPLE
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "ha_user_id": self.ha_user_id,
+            "tracker_switcher_visibility": self.tracker_switcher_visibility,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UserPreferences:
+        visibility = data.get(
+            "tracker_switcher_visibility", TRACKER_SWITCHER_MULTIPLE
+        )
+        if visibility not in TRACKER_SWITCHER_VALUES:
+            visibility = TRACKER_SWITCHER_MULTIPLE
+        return cls(
+            ha_user_id=data["ha_user_id"],
+            tracker_switcher_visibility=visibility,
+        )
+
 
 @dataclass
 class ChecklistItem:

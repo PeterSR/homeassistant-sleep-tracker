@@ -7,6 +7,7 @@ import type {
   TrackerConfig,
   TrackerState,
   ToolbarConfig,
+  UserPreferences,
 } from "./types";
 import { SleepTrackerApi } from "./api";
 import { tokens } from "./styles";
@@ -35,6 +36,7 @@ export class SleepTrackerPanel extends LitElement {
   @state() private _toolbar: ToolbarConfig = { title: "Sleep Tracker" };
   @state() private _haReady = false;
   @state() private _switcherOpen = false;
+  @state() private _userPrefs: UserPreferences | null = null;
 
   private _api!: SleepTrackerApi;
   private _unsub?: () => void;
@@ -45,6 +47,7 @@ export class SleepTrackerPanel extends LitElement {
     window.addEventListener("popstate", this._onPopState);
     this.addEventListener("sleep-tracker-state-update", this._refreshState as EventListener);
     this.addEventListener("sleep-tracker-trackers-update", this._refreshTrackers as EventListener);
+    this.addEventListener("sleep-tracker-prefs-update", this._refreshPrefs as EventListener);
     this._lastConnection = undefined;
     if (customElements.get("ha-card")) {
       this._haReady = true;
@@ -60,6 +63,7 @@ export class SleepTrackerPanel extends LitElement {
     window.removeEventListener("popstate", this._onPopState);
     this.removeEventListener("sleep-tracker-state-update", this._refreshState as EventListener);
     this.removeEventListener("sleep-tracker-trackers-update", this._refreshTrackers as EventListener);
+    this.removeEventListener("sleep-tracker-prefs-update", this._refreshPrefs as EventListener);
     this._unsubscribe();
   }
 
@@ -74,6 +78,10 @@ export class SleepTrackerPanel extends LitElement {
 
   private _refreshTrackers = async (): Promise<void> => {
     await this._loadTrackers();
+  };
+
+  private _refreshPrefs = async (): Promise<void> => {
+    await this._loadUserPrefs();
   };
 
   willUpdate(changed: PropertyValues): void {
@@ -93,8 +101,16 @@ export class SleepTrackerPanel extends LitElement {
   }
 
   private async _initialize(): Promise<void> {
-    await this._loadTrackers();
+    await Promise.all([this._loadTrackers(), this._loadUserPrefs()]);
     this._subscribe();
+  }
+
+  private async _loadUserPrefs(): Promise<void> {
+    try {
+      this._userPrefs = await this._api.getUserPreferences();
+    } catch (e) {
+      console.error("Failed to load user preferences:", e);
+    }
   }
 
   private async _loadTrackers(): Promise<void> {
@@ -238,7 +254,10 @@ export class SleepTrackerPanel extends LitElement {
   }
 
   private _renderSwitcher() {
-    if (this._trackers.length === 0 && !this._selectedTrackerId) return nothing;
+    const visibility =
+      this._userPrefs?.tracker_switcher_visibility ?? "multiple";
+    if (visibility === "never") return nothing;
+    if (visibility === "multiple" && this._trackers.length <= 1) return nothing;
     const haUserId = this.hass?.user?.id;
     return html`
       <div class="switcher" @click=${(e: Event) => e.stopPropagation()}>
@@ -416,6 +435,7 @@ export class SleepTrackerPanel extends LitElement {
           .api=${this._api}
           .trackerState=${this._trackerState}
           .trackers=${this._trackers}
+          .userPreferences=${this._userPrefs}
           .selectedTrackerId=${this._selectedTrackerId}
           .narrow=${this.narrow}
           @navigate=${this._onNavigate}
