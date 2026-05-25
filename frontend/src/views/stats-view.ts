@@ -1,37 +1,11 @@
-import { LitElement, html, css, nothing, type PropertyValues } from "lit";
+import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import type { HomeAssistant, TrackerState, ToolbarConfig } from "../types";
+import type { HomeAssistant, StatsData, TrackerState, ToolbarConfig } from "../types";
 import type { SleepTrackerApi } from "../api";
 import { tokens, viewStyles, statStyles } from "../styles";
-import { formatDuration, efficiencyPercent } from "../utils";
+import { formatDuration } from "../utils";
 
-interface DailyStat {
-  session_id: string;
-  date: string;
-  started_at: string;
-  ended_at: string;
-  time_in_bed_minutes: number;
-  sleep_period_minutes: number;
-  total_sleep_minutes: number;
-  sleep_efficiency: number;
-  awakenings: number;
-  time_to_fall_asleep_minutes: number;
-  time_before_getting_up_minutes: number;
-}
-
-interface StatsData {
-  days: number;
-  session_count: number;
-  daily: DailyStat[];
-  averages: {
-    total_sleep_minutes: number;
-    sleep_period_minutes: number;
-    sleep_efficiency: number;
-    awakenings: number;
-    time_to_fall_asleep_minutes: number;
-    time_before_getting_up_minutes: number;
-  };
-}
+import "../components/averages-card";
 
 @customElement("sleep-tracker-stats-view")
 export class StatsView extends LitElement {
@@ -95,7 +69,6 @@ export class StatsView extends LitElement {
     }
 
     const s = this._stats;
-    const avg = s.averages;
 
     return html`
       <div class="container">
@@ -112,38 +85,7 @@ export class StatsView extends LitElement {
           )}
         </div>
 
-        <ha-card>
-          <div class="card-header">
-            Averages
-            <span class="session-count">${s.session_count} night${s.session_count !== 1 ? "s" : ""}</span>
-          </div>
-          <div class="stats-grid">
-            <div class="stat">
-              <div class="stat-value">${formatDuration(avg.total_sleep_minutes)}</div>
-              <div class="stat-label">Avg Sleep</div>
-            </div>
-            <div class="stat">
-              <div class="stat-value">${efficiencyPercent(avg.sleep_efficiency)}</div>
-              <div class="stat-label">Avg Efficiency</div>
-            </div>
-            <div class="stat">
-              <div class="stat-value">${avg.awakenings.toFixed(1)}</div>
-              <div class="stat-label">Avg Awakenings</div>
-            </div>
-            <div class="stat">
-              <div class="stat-value">${formatDuration(avg.time_to_fall_asleep_minutes)}</div>
-              <div class="stat-label">Avg Time to Sleep</div>
-            </div>
-            <div class="stat">
-              <div class="stat-value">${formatDuration(avg.sleep_period_minutes)}</div>
-              <div class="stat-label">Avg Sleep Period</div>
-            </div>
-            <div class="stat">
-              <div class="stat-value">${formatDuration(avg.time_before_getting_up_minutes)}</div>
-              <div class="stat-label">Avg Awake Before Up</div>
-            </div>
-          </div>
-        </ha-card>
+        <sleep-tracker-averages-card .stats=${s}></sleep-tracker-averages-card>
 
         ${s.daily.length > 0
           ? html`

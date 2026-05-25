@@ -10,12 +10,13 @@ import {
   type TrackerState,
 } from "../types";
 import type { SleepTrackerApi } from "../api";
-import { tokens, viewStyles, cardStyles } from "../styles";
+import { tokens, viewStyles, cardStyles, sectionStyles } from "../styles";
 import { formatDate, formatTime } from "../utils";
 
 import "../components/timeline-bar";
 import "../components/session-meta";
 import "../components/event-info-modal";
+import "../components/night-stats";
 
 function isCycleType(t: string): t is CycleType {
   return (CYCLE_TYPES as readonly string[]).includes(t);
@@ -215,6 +216,18 @@ export class EventReviewView extends LitElement {
           </div>
         </ha-card>
 
+        ${s.stats
+          ? html`
+              <div class="section">
+                <h3>Statistics</h3>
+                <sleep-tracker-night-stats
+                  .stats=${s.stats}
+                  .goalMinutes=${this.trackerState.config?.sleep_goal_minutes ?? 0}
+                ></sleep-tracker-night-stats>
+              </div>
+            `
+          : nothing}
+
         ${phaseReviewSkipped
           ? html`
               <sleep-tracker-session-meta
@@ -353,6 +366,7 @@ export class EventReviewView extends LitElement {
     tokens,
     viewStyles,
     cardStyles,
+    sectionStyles,
     css`
       .time-range {
         font-size: var(--ha-font-size-xl, 20px);
