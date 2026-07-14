@@ -37,6 +37,8 @@ The integration is a singleton — add it once. Setup happens in the sidebar pan
 - **Personal tracker** — each user opens **Sleep Tracker** and clicks *Enable for me*.
 - **Shared tracker** — anyone can use *Add a shared tracker* (e.g. "Baby") from the setup screen, the toolbar switcher, or the Settings → Shared trackers card. Shared trackers have a generated UUID and are accessible to every authenticated user.
 
+> **Trust model:** shared trackers assume a trusted household. Every authenticated HA user can view and edit a shared tracker's sessions and settings (including its REST export target). Deleting a shared tracker is restricted to its creator or an HA admin.
+
 The toolbar dropdown switches between accessible trackers. All preferences (sleep-onset delay, awakening grace, checklist, custom events, tags, environment entities, nightly goal, REST export) are stored per tracker.
 
 ## Entities
@@ -69,7 +71,7 @@ All services live under the `sleep_tracker` domain — open **Developer Tools �
 | `event_fell_asleep` | Force an immediate asleep transition, bypassing the latency model. |
 | `export_session` | POST a finalized session to the configured REST endpoint. |
 
-All tracker-facing services take `tracker_id`. For a personal tracker this is the HA user id (`{{ states.person.peter.attributes.user_id }}`); for a shared tracker, copy the id from **Settings → Tracker ID** in the panel. Most services also accept optional `source`, `automation_id`, and `automation_trigger_id` for provenance — these show up in the session's event review so you can tell which automation fired what.
+All tracker-facing services take `tracker_id`. For a personal tracker this is the HA user id (`{{ states.person.your_name.attributes.user_id }}`); for a shared tracker, copy the id from **Settings → Tracker ID** in the panel. Most services also accept optional `source`, `automation_id`, and `automation_trigger_id` for provenance — these show up in the session's event review so you can tell which automation fired what.
 
 ## Automation example
 
@@ -86,7 +88,7 @@ condition:
 action:
   - service: sleep_tracker.start_sleep
     data:
-      tracker_id: "{{ states.person.peter.attributes.user_id }}"
+      tracker_id: "{{ states.person.your_name.attributes.user_id }}"
       source: phone_charger
       automation_id: "{{ this.entity_id }}"
       automation_trigger_id: "{{ trigger.id }}"
