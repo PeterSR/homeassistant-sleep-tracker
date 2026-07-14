@@ -36,6 +36,8 @@ export class EventReviewView extends LitElement {
   @state() private _confirmDelete = false;
   @state() private _eventInfoModal: SleepEvent | null = null;
 
+  private _redirected = false;
+
   connectedCallback(): void {
     super.connectedCallback();
     this._load();
@@ -45,13 +47,21 @@ export class EventReviewView extends LitElement {
     if (changed.has("sessionId") && this.sessionId) {
       this._load();
     }
-    if (this._session && (this._session.status === "completed" || this._session.status === "finalized")) {
+    // One-shot: without the guard this would push a history entry on every
+    // re-render until the parent swaps the view out.
+    if (
+      !this._redirected &&
+      this._session &&
+      (this._session.status === "completed" || this._session.status === "finalized")
+    ) {
+      this._redirected = true;
       this._navigate(`/night/${this._session.session_id}`);
     }
   }
 
   private async _load() {
     this._loading = true;
+    this._redirected = false;
     try {
       this._session = await this.api.getSession(this.sessionId);
       this._setToolbar();

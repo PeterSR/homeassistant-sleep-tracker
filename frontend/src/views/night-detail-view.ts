@@ -41,6 +41,8 @@ export class NightDetailView extends LitElement {
   @state() private _appendingPhase: { state: "awake" | "asleep"; endTime: string } | null = null;
   @state() private _eventInfoModal: SleepEvent | null = null;
 
+  private _redirected = false;
+
   connectedCallback(): void {
     super.connectedCallback();
     this._load();
@@ -50,13 +52,17 @@ export class NightDetailView extends LitElement {
     if (changed.has("sessionId") && this.sessionId) {
       this._load();
     }
-    if (this._session && this._session.status === "stopped") {
+    // One-shot: without the guard this would push a history entry on every
+    // re-render (modal toggles etc.) until the parent swaps the view out.
+    if (!this._redirected && this._session && this._session.status === "stopped") {
+      this._redirected = true;
       this._navigate(`/review/${this._session.session_id}`);
     }
   }
 
   private async _load() {
     this._loading = true;
+    this._redirected = false;
     try {
       this._session = await this.api.getSession(this.sessionId);
       this._setToolbar();
@@ -158,6 +164,21 @@ export class NightDetailView extends LitElement {
       return;
     }
     oldDate.setHours(h, m, 0, 0);
+
+    // A bare time input is day-ambiguous around midnight: editing a 23:50
+    // boundary to 00:10 must land on the *next* day, and 00:10 -> 23:50 on the
+    // *previous* one. Pick the day (yesterday/today/tomorrow relative to the
+    // old boundary) that puts the time inside the surrounding phases.
+    const phaseStart = new Date(this._session.phases[afterIndex].start).getTime();
+    const nextEnd = new Date(this._session.phases[afterIndex + 1].end).getTime();
+    for (const dayOffset of [0, 1, -1]) {
+      const candidate = new Date(oldDate);
+      candidate.setDate(candidate.getDate() + dayOffset);
+      if (candidate.getTime() > phaseStart && candidate.getTime() < nextEnd) {
+        oldDate.setTime(candidate.getTime());
+        break;
+      }
+    }
     const newTs = this._toLocalIso(oldDate);
 
     this._busy = true;
