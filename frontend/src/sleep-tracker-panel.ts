@@ -40,6 +40,7 @@ export class SleepTrackerPanel extends LitElement {
 
   private _api!: SleepTrackerApi;
   private _unsub?: () => void;
+  private _subGeneration = 0;
   private _lastConnection?: HomeAssistant["connection"];
 
   connectedCallback(): void {
@@ -181,16 +182,27 @@ export class SleepTrackerPanel extends LitElement {
   private async _subscribe(): Promise<void> {
     this._unsubscribe();
     if (!this._api) return;
+    // Guard against overlapping subscribe calls (e.g. _initialize and
+    // _resolveSelection racing on first load): only the latest call may keep
+    // its subscription; superseded ones unsubscribe immediately instead of
+    // leaking a server-side listener.
+    const gen = ++this._subGeneration;
     try {
-      this._unsub = await this._api.subscribe((state) => {
+      const unsub = await this._api.subscribe((state) => {
         this._trackerState = state;
       });
+      if (gen !== this._subGeneration) {
+        unsub();
+        return;
+      }
+      this._unsub = unsub;
     } catch (e) {
       console.error("Failed to subscribe to Sleep Tracker state:", e);
     }
   }
 
   private _unsubscribe(): void {
+    this._subGeneration++;
     if (this._unsub) {
       this._unsub();
       this._unsub = undefined;

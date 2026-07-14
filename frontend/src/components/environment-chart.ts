@@ -43,8 +43,13 @@ export class EnvironmentChart extends LitElement {
     }
   }
 
+  private _fetchGeneration = 0;
+
   private async _fetchHistory() {
     if (!this.entityId || !this.startedAt) return;
+    // Discard superseded responses: if the entity/window changes while a
+    // request is in flight, an older response must not overwrite a newer one.
+    const gen = ++this._fetchGeneration;
     this._loading = true;
     this._error = "";
     try {
@@ -62,12 +67,16 @@ export class EnvironmentChart extends LitElement {
         no_attributes: true,
         significant_changes_only: false,
       });
+      if (gen !== this._fetchGeneration) return;
       this._history = result?.[this.entityId] ?? [];
     } catch (err) {
+      if (gen !== this._fetchGeneration) return;
       console.error("Failed to fetch history for", this.entityId, err);
       this._error = "Failed to load history";
     } finally {
-      this._loading = false;
+      if (gen === this._fetchGeneration) {
+        this._loading = false;
+      }
     }
   }
 
