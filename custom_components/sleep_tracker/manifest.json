@@ -1,7 +1,7 @@
 {
   "domain": "sleep_tracker",
   "name": "Sleep Tracker",
-  "after_dependencies": ["recorder"],
+  "after_dependencies": ["recorder", "trace"],
   "codeowners": ["@PeterSR"],
   "config_flow": true,
   "dependencies": [
