@@ -74,7 +74,7 @@ export class EventReviewView extends LitElement {
 
   private _setToolbar() {
     const title = this._session
-      ? `Review — ${formatDate(this._session.started_at)}`
+      ? `Review - ${formatDate(this._session.started_at)}`
       : "Review Events";
     this.dispatchEvent(
       new CustomEvent<ToolbarConfig>("set-toolbar", {
@@ -213,7 +213,7 @@ export class EventReviewView extends LitElement {
       <div class="container">
         <ha-card>
           <div class="time-range">
-            ${formatTime(s.started_at)} — ${s.ended_at ? formatTime(s.ended_at) : ""}
+            ${formatTime(s.started_at)} - ${s.ended_at ? formatTime(s.ended_at) : ""}
           </div>
           <div class="timeline-section">
             <sleep-tracker-timeline-bar

@@ -3,7 +3,7 @@
  *
  * Shows current sleep status with start/stop and pulse controls.
  * Auto-loaded on all dashboards via add_extra_js_url().
- * No config required — uses connection.user for per-user scoping.
+ * No config required - uses connection.user for per-user scoping.
  */
 
 import { LitElement, html, css, nothing } from "lit";

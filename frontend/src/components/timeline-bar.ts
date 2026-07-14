@@ -62,7 +62,7 @@ export class TimelineBar extends LitElement {
                   <div
                     class="event-marker ${event.event_type}"
                     style="left: ${pos}%"
-                    title="${event.event_type} — ${formatTime(event.timestamp)}"
+                    title="${event.event_type} - ${formatTime(event.timestamp)}"
                   ></div>
                 `;
               })

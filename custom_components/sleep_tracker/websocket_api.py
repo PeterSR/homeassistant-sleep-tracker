@@ -145,7 +145,7 @@ def _resolve_tracker_id(
 ) -> str:
     """Resolve and authorize the tracker_id for a WS command.
 
-    If msg contains "tracker_id", use that — but reject access to a personal
+    If msg contains "tracker_id", use that - but reject access to a personal
     tracker that doesn't belong to the connection user. If omitted, default to
     the connection user's id (their personal tracker).
 
@@ -157,7 +157,7 @@ def _resolve_tracker_id(
 
     config = coordinator.store.get_tracker_config(requested)
     if config is None:
-        # Tracker doesn't exist yet — only the matching HA user may set up
+        # Tracker doesn't exist yet - only the matching HA user may set up
         # their own personal tracker; everything else is forbidden.
         if requested != connection.user.id:
             raise HomeAssistantError("Tracker not found")
@@ -224,7 +224,7 @@ async def ws_delete_tracker(
     """Delete a tracker.
 
     Personal trackers: only the owner. Shared trackers: only the creator or
-    an HA admin — deletion wipes all history, so mere shared access (which any
+    an HA admin - deletion wipes all history, so mere shared access (which any
     authenticated user has) is not enough.
     """
     coordinator = _get_coordinator(hass)

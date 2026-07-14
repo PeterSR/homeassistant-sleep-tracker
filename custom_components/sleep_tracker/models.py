@@ -49,7 +49,7 @@ class UserPreferences:
 
 @dataclass
 class ChecklistItem:
-    """A pre-sleep checklist item — either an entity state check or free text."""
+    """A pre-sleep checklist item - either an entity state check or free text."""
 
     type: str  # CHECKLIST_TYPE_ENTITY or CHECKLIST_TYPE_TEXT
     entity_id: str | None = None
@@ -210,7 +210,7 @@ class TrackerConfig:
 
 @dataclass
 class SleepEvent:
-    """A single raw event during a sleep session — immutable signal."""
+    """A single raw event during a sleep session - immutable signal."""
 
     timestamp: str  # ISO 8601
     event_type: str  # "awake", "still_awake", "fell_asleep", "pause", "resume", "custom"
@@ -247,7 +247,7 @@ class SleepEvent:
 
 @dataclass
 class SleepPhase:
-    """A sleep/wake phase — the editable representation of a sleep state."""
+    """A sleep/wake phase - the editable representation of a sleep state."""
 
     start: str  # ISO 8601
     end: str  # ISO 8601

@@ -99,7 +99,7 @@ export class MainView extends LitElement {
       } else if (session.status === "completed") {
         this._navigate(`/night/${session.session_id}`);
       } else {
-        // finalized (both skips enabled) — stay on main
+        // finalized (both skips enabled) - stay on main
         this._requestRefresh();
       }
     } catch (err) {
@@ -296,7 +296,7 @@ export class MainView extends LitElement {
                       <div class="unfinalized-card" @click=${() => this._navigate(path)}>
                         <ha-icon icon="mdi:pencil-circle-outline" class="review-icon"></ha-icon>
                         <div class="unfinalized-info">
-                          <span class="unfinalized-date">${formatTime(s.started_at)} — ${s.ended_at ? formatTime(s.ended_at) : ""}</span>
+                          <span class="unfinalized-date">${formatTime(s.started_at)} - ${s.ended_at ? formatTime(s.ended_at) : ""}</span>
                           <span class="unfinalized-hint">${hint}</span>
                         </div>
                         <ha-icon icon="mdi:chevron-right"></ha-icon>

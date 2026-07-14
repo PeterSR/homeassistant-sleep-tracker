@@ -454,7 +454,7 @@ export class NightDetailView extends LitElement {
 
         <ha-card>
           <div class="time-range">
-            ${formatTime(s.started_at)} — ${s.ended_at ? formatTime(s.ended_at) : "ongoing"}
+            ${formatTime(s.started_at)} - ${s.ended_at ? formatTime(s.ended_at) : "ongoing"}
           </div>
           <div class="timeline-section">
             <sleep-tracker-timeline-bar
@@ -546,7 +546,7 @@ export class NightDetailView extends LitElement {
                 @click=${() => { this._showEvents = !this._showEvents; }}
               >
                 <ha-icon icon=${this._showEvents ? "mdi:chevron-down" : "mdi:chevron-right"}></ha-icon>
-                Events (${s.events.length}) — read-only
+                Events (${s.events.length}) - read-only
               </button>
             </h3>
           </div>
@@ -796,7 +796,7 @@ export class NightDetailView extends LitElement {
                   ${p.state === "asleep" ? "Asleep" : "Awake"}
                 </span>
                 <span class="phase-times">
-                  ${formatTime(p.start)} — ${formatTime(p.end)}
+                  ${formatTime(p.start)} - ${formatTime(p.end)}
                 </span>
                 <span class="phase-duration">
                   ${this._phaseDuration(p.start, p.end)}

@@ -83,7 +83,7 @@ async def async_export_session(
             payload["environment_history"] = await async_get_state_history(
                 hass, config.environment_entities, start_dt, end_dt
             )
-        except Exception:  # noqa: BLE001 — never fail export over missing history
+        except Exception:  # noqa: BLE001 - never fail export over missing history
             _LOGGER.exception(
                 "Failed to fetch environment history for session %s", session_id
             )

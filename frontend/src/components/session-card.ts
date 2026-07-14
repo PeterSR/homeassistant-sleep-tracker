@@ -30,7 +30,7 @@ export class SessionCard extends LitElement {
         <div class="header">
           <span class="date">${formatDate(s.started_at)}</span>
           <span class="time">
-            ${formatTime(s.started_at)} — ${s.ended_at ? formatTime(s.ended_at) : "..."}
+            ${formatTime(s.started_at)} - ${s.ended_at ? formatTime(s.ended_at) : "..."}
           </span>
         </div>
         <sleep-tracker-timeline-bar

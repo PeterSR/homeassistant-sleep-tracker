@@ -111,7 +111,7 @@ class SleepTrackerLastNightCard extends LitElement {
             <span class="title">Last Night</span>
             <span class="date">
               ${formatDate(last.started_at)}
-              ${formatTime(last.started_at)} — ${last.ended_at ? formatTime(last.ended_at) : ""}
+              ${formatTime(last.started_at)} - ${last.ended_at ? formatTime(last.ended_at) : ""}
             </span>
           </div>
 

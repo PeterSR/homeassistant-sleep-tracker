@@ -1,7 +1,7 @@
 Don't try to make backwards compatible.
 When making breaking changes, simply tell me what I need to update or delete to start fresh.
 
-# Sleep Tracker — Custom Home Assistant Integration
+# Sleep Tracker - Custom Home Assistant Integration
 
 Per-user sleep tracking with pulse-based timeline reconstruction, sidebar panel, and REST export.
 
@@ -60,11 +60,11 @@ make logs             # Tail HA logs filtered to sleep_tracker
 
 ## Key Architecture
 
-- **Event-driven** — no tick loop. All state changes via start/stop/pulse calls
-- **Per-user isolation** — WebSocket API derives user_id from connection.user; services take explicit user_id
-- **Timeline reconstruction** — pure functions in timeline.py compute awake/asleep intervals from pulses + configurable fall-asleep latency
-- **Dynamic entity creation** — entities created when user opts in via panel, using stored async_add_entities callbacks
-- **Sensor entity IDs** — set via `self.entity_id` for predictable IDs. Entity IDs are permanent once HA registers them
+- **Event-driven** - no tick loop. All state changes via start/stop/pulse calls
+- **Per-user isolation** - WebSocket API derives user_id from connection.user; services take explicit user_id
+- **Timeline reconstruction** - pure functions in timeline.py compute awake/asleep intervals from pulses + configurable fall-asleep latency
+- **Dynamic entity creation** - entities created when user opts in via panel, using stored async_add_entities callbacks
+- **Sensor entity IDs** - set via `self.entity_id` for predictable IDs. Entity IDs are permanent once HA registers them
 
 ## Deploy Target
 
@@ -76,4 +76,4 @@ make logs             # Tail HA logs filtered to sleep_tracker
 - Frontend uses HA design tokens (`--ha-space-*`, `--ha-font-size-*`, etc.)
 - Dialogs use `ha-card` overlays (not `ha-dialog`)
 - Selects use `ha-select` + `mwc-list-item` (not native `<select>`)
-- `_attr_suggested_object_id` does NOT exist in HA — use `self.entity_id` directly
+- `_attr_suggested_object_id` does NOT exist in HA - use `self.entity_id` directly

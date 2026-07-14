@@ -1,4 +1,4 @@
-"""Sleep Tracker — Per-user sleep tracking integration."""
+"""Sleep Tracker - Per-user sleep tracking integration."""
 
 from __future__ import annotations
 
@@ -116,7 +116,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             },
         )
 
-        # Lovelace cards — auto-loaded on all dashboards
+        # Lovelace cards - auto-loaded on all dashboards
         add_extra_js_url(hass, card_url)
         add_extra_js_url(hass, cards_url)
 

@@ -796,7 +796,7 @@ actions:
 data:
   tracker_id: "${uid}"
   source: automation
-  # Optional — auto-detected via HA traces; pass explicitly for stability:
+  # Optional - auto-detected via HA traces; pass explicitly for stability:
   automation_id: "{{ this.entity_id }}"
   automation_trigger_id: "{{ trigger.id }}"`;
   }
@@ -1011,7 +1011,7 @@ data:
                 .value=${String(this._onset)}
                 @input=${this._onOnsetChange}
               />
-              <span class="range-value">${this._onset} min — minimum settling period before falling asleep (pulses extend the timer but don't count as awakenings)</span>
+              <span class="range-value">${this._onset} min - minimum settling period before falling asleep (pulses extend the timer but don't count as awakenings)</span>
             </div>
 
             <div class="field">
@@ -1024,7 +1024,7 @@ data:
                 .value=${String(this._latency)}
                 @input=${this._onLatencyChange}
               />
-              <span class="range-value">${this._latency} min — assumed time to fall back asleep after a pulse</span>
+              <span class="range-value">${this._latency} min - assumed time to fall back asleep after a pulse</span>
             </div>
 
             <div class="field">
@@ -1039,8 +1039,8 @@ data:
               />
               <span class="range-value">
                 ${this._awakeningGrace === 0
-                  ? "0 min — any pulse after the latency window counts as a new awakening (default)"
-                  : `${this._awakeningGrace} min — a pulse up to ${this._awakeningGrace} min after the latency window is treated as "still awake" instead of a new awakening. High values may swallow short real awakenings.`}
+                  ? "0 min - any pulse after the latency window counts as a new awakening (default)"
+                  : `${this._awakeningGrace} min - a pulse up to ${this._awakeningGrace} min after the latency window is treated as "still awake" instead of a new awakening. High values may swallow short real awakenings.`}
               </span>
             </div>
 
@@ -1083,7 +1083,7 @@ data:
                 placeholder="0 = no goal"
                 @input=${this._onSleepGoalChange}
               />
-              <span class="range-value">${this._sleepGoalMinutes > 0 ? `${(this._sleepGoalMinutes / 60).toFixed(1)}h — shown on session stats` : "No goal set"}</span>
+              <span class="range-value">${this._sleepGoalMinutes > 0 ? `${(this._sleepGoalMinutes / 60).toFixed(1)}h - shown on session stats` : "No goal set"}</span>
             </div>
 
             <div class="field">
@@ -1461,7 +1461,7 @@ data:
               When an event is triggered by an automation, the calling automation and
               <code>trigger.id</code> are auto-detected via HA's trace system and shown in
               the review/night pages. The auto-detection uses an internal HA API that
-              could change in a future release — for forward compatibility, pass
+              could change in a future release - for forward compatibility, pass
               <code>automation_id</code> and <code>automation_trigger_id</code>
               explicitly as shown below.
             </span>
@@ -1529,7 +1529,7 @@ data:
             </div>
             <div class="service-item">
               <code>sleep_tracker.pause_sleep</code>
-              <span class="hint">Pause — marks as awake until resumed via start_sleep</span>
+              <span class="hint">Pause - marks as awake until resumed via start_sleep</span>
             </div>
             <div class="service-item">
               <code>sleep_tracker.reopen_session</code>
@@ -1562,7 +1562,7 @@ data:
               @click=${() => this._showEntity(`sensor.sleep_tracker_${this._slug}_phase`)}
             >
               <code>sensor.sleep_tracker_${this._slug}_phase</code>
-              <span class="hint">State is <code>asleep</code> while you're actively sleeping, otherwise <code>awake</code> — use as condition in automations</span>
+              <span class="hint">State is <code>asleep</code> while you're actively sleeping, otherwise <code>awake</code> - use as condition in automations</span>
             </div>
             <div
               class="service-item clickable"

@@ -53,7 +53,7 @@ export class EventInfoModal extends LitElement {
       : undefined;
     const triggerErr = triggerId === "ERROR";
     const triggerDisplay = triggerErr
-      ? "Unknown (trace lookup failed — HA internal API may have changed)"
+      ? "Unknown (trace lookup failed - HA internal API may have changed)"
       : triggerId ?? "(not recorded)";
 
     return html`

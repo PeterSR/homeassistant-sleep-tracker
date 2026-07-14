@@ -80,7 +80,7 @@ class PhaseSnapshot(NamedTuple):
 
 
 class SleepTrackerCoordinator:
-    """Brain of the sleep tracker — session management and state queries."""
+    """Brain of the sleep tracker - session management and state queries."""
 
     def __init__(self, hass: HomeAssistant, store: SleepTrackerStore) -> None:
         self.hass = hass
@@ -138,7 +138,7 @@ class SleepTrackerCoordinator:
     ) -> dict:
         """Set up a tracker. Creates entities dynamically.
 
-        If the tracker already exists, returns the existing config untouched —
+        If the tracker already exists, returns the existing config untouched -
         callers should use `async_update_tracker_config` to change settings.
         """
         display_name = display_name.strip()
@@ -186,7 +186,7 @@ class SleepTrackerCoordinator:
 
         # Remove entities by clearing their listeners and unregistering.
         # Entities self-unregister via async_will_remove_from_hass when the
-        # entity registry deletes them — we just need to clear store state.
+        # entity registry deletes them - we just need to clear store state.
         self.store.remove_tracker(tracker_id)
         self._tracker_listeners.pop(tracker_id, None)
 
@@ -398,7 +398,7 @@ class SleepTrackerCoordinator:
     ) -> dict:
         """Stop the active sleep session.
 
-        Sets ended_at but does NOT materialize phases — the session enters
+        Sets ended_at but does NOT materialize phases - the session enters
         event-review mode. Call async_complete_session to materialize.
         """
         session = self.store.get_active_session(tracker_id)
@@ -434,7 +434,7 @@ class SleepTrackerCoordinator:
         automation_id: str | None = None,
         automation_trigger_id: str | None = None,
     ) -> dict:
-        """Pause the active session — marks tracker as awake until resumed."""
+        """Pause the active session - marks tracker as awake until resumed."""
         session = self.store.get_active_session(tracker_id)
         if session is None:
             raise HomeAssistantError(f"Tracker {tracker_id} has no active session")
@@ -549,7 +549,7 @@ class SleepTrackerCoordinator:
 
         For "awake" events: if the tracker is currently in the awake state (still
         in the initial onset/latency window or in a previous awake window), the
-        event is auto-demoted to "still_awake" — you can't wake up if you
+        event is auto-demoted to "still_awake" - you can't wake up if you
         haven't fallen asleep yet.
 
         Stopped sessions reject events.
@@ -560,7 +560,7 @@ class SleepTrackerCoordinator:
         session = self.store.get_active_session(tracker_id)
         if session is None:
             raise HomeAssistantError(
-                f"Tracker {tracker_id} has no active session — events are rejected on stopped sessions"
+                f"Tracker {tracker_id} has no active session - events are rejected on stopped sessions"
             )
         if session.paused_at is not None:
             raise HomeAssistantError("Cannot record events while session is paused")
@@ -627,7 +627,7 @@ class SleepTrackerCoordinator:
     ) -> dict:
         """Record a custom event in the active session.
 
-        Unlike pulse events, custom events are also allowed while paused —
+        Unlike pulse events, custom events are also allowed while paused -
         they're just user-marked timeline annotations. Stopped sessions reject.
         If the custom event has an associated tag, it's auto-applied to the
         session's tags (deduped).
@@ -645,7 +645,7 @@ class SleepTrackerCoordinator:
         session = self.store.get_active_session(tracker_id)
         if session is None:
             raise HomeAssistantError(
-                f"Tracker {tracker_id} has no active session — events are rejected on stopped sessions"
+                f"Tracker {tracker_id} has no active session - events are rejected on stopped sessions"
             )
 
         now = dt_util.utcnow()
@@ -758,7 +758,7 @@ class SleepTrackerCoordinator:
         if session is None or session.tracker_id != tracker_id:
             raise HomeAssistantError("Session not found")
         if session.is_active:
-            raise HomeAssistantError("Cannot complete an active session — stop it first")
+            raise HomeAssistantError("Cannot complete an active session - stop it first")
         if session.phases is not None:
             raise HomeAssistantError("Session already has materialized phases")
 
@@ -850,7 +850,7 @@ class SleepTrackerCoordinator:
     ) -> dict:
         """Update session metadata (note, ratings, tags).
 
-        Blocked on finalized sessions — unfinalize first to edit.
+        Blocked on finalized sessions - unfinalize first to edit.
         """
         session = self.store.get_session(session_id)
         if session is None or session.tracker_id != tracker_id:
@@ -1054,7 +1054,7 @@ class SleepTrackerCoordinator:
     async def async_unfinalize_session(
         self, tracker_id: str, session_id: str
     ) -> dict:
-        """Unfinalize a session — escape hatch to edit metadata/phases again."""
+        """Unfinalize a session - escape hatch to edit metadata/phases again."""
         session = self.store.get_session(session_id)
         if session is None or session.tracker_id != tracker_id:
             raise HomeAssistantError("Session not found")
@@ -1127,7 +1127,7 @@ class SleepTrackerCoordinator:
 
         start_date / end_date are ISO strings compared against session.started_at
         lexicographically (both are ISO, so lex-order == chronological). Returns
-        all completed or finalized sessions — active sessions are excluded.
+        all completed or finalized sessions - active sessions are excluded.
 
         When include_environment is True, attaches an "environment_history" map
         (entity_id -> list of state changes) for each session, scoped to the

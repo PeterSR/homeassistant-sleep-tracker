@@ -1,6 +1,6 @@
 """Pure-function phase materialization and statistics for sleep sessions.
 
-No Home Assistant dependencies — can be tested independently.
+No Home Assistant dependencies - can be tested independently.
 
 A "phase" is an awake or asleep interval. Phases are materialized from a list
 of raw events (the user's input signals) using a latency/onset model.
@@ -92,7 +92,7 @@ def materialize_phases(
             continue
 
         if event.event_type == EVENT_PAUSE:
-            # Explicit awake — user is up, stays awake until resume
+            # Explicit awake - user is up, stays awake until resume
             if state == PHASE_AWAKE:
                 if sleep_at <= event_time:
                     # Algorithm thought asleep; pause wakes us
@@ -113,12 +113,12 @@ def materialize_phases(
                     )
                 segment_start = event_time
                 state = PHASE_AWAKE
-            # Disable automatic sleep — stays awake until resume
+            # Disable automatic sleep - stays awake until resume
             sleep_at = never
             continue
 
         if event.event_type == EVENT_RESUME:
-            # User is back in bed — onset timer starts fresh (same as session start)
+            # User is back in bed - onset timer starts fresh (same as session start)
             sleep_at = event_time + max(latency, onset)
             # State stays awake (user was paused = awake), onset period runs
             continue
@@ -181,7 +181,7 @@ def materialize_phases(
                 SleepPhase(_fmt(segment_start), _fmt(end_dt), PHASE_ASLEEP)
             )
 
-    # Coalesce any same-state neighbors (defensive — shouldn't happen, but
+    # Coalesce any same-state neighbors (defensive - shouldn't happen, but
     # ensures the bipartite invariant holds for downstream code).
     return _coalesce(raw_phases)
 

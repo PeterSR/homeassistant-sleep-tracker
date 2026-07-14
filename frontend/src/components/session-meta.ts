@@ -186,7 +186,7 @@ export class SessionMeta extends LitElement {
         : status === "saved"
           ? "Saved"
           : status === "error"
-            ? "Not saved — retry"
+            ? "Not saved - retry"
             : "Changes save automatically";
     const icon =
       status === "saving"
