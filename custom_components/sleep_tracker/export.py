@@ -42,6 +42,8 @@ async def async_export_session(
     config = coordinator.store.get_tracker_config(session.tracker_id)
     if config is None or not config.export_url:
         raise ExportError("No export URL configured for this tracker")
+    if not config.export_url.startswith(("http://", "https://")):
+        raise ExportError("export_url must be an http(s) URL")
 
     # Prefer stored (edited) phases; fall back to materializing from events
     if session.phases is not None:
@@ -100,10 +102,16 @@ async def async_export_session(
             timeout=aiohttp.ClientTimeout(total=EXPORT_TIMEOUT_SECONDS),
         ) as resp:
             if resp.status >= 300:
+                # Log the body server-side only; relaying it to the caller
+                # would let a crafted export_url read internal HTTP responses.
                 body = await resp.text()
-                raise ExportError(
-                    f"Export failed with status {resp.status}: {body[:200]}"
+                _LOGGER.warning(
+                    "Export of session %s failed with status %s: %s",
+                    session_id,
+                    resp.status,
+                    body[:200],
                 )
+                raise ExportError(f"Export failed with status {resp.status}")
     except ExportError:
         raise
     except asyncio.TimeoutError as err:

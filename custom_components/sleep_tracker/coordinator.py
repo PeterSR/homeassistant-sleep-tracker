@@ -169,11 +169,13 @@ class SleepTrackerCoordinator:
         self._notify_listeners(tracker_id)
         return config.to_dict()
 
-    async def async_create_shared_tracker(self, display_name: str) -> dict:
+    async def async_create_shared_tracker(
+        self, display_name: str, created_by: str
+    ) -> dict:
         """Create a new shared tracker with a generated UUID."""
         tracker_id = str(uuid.uuid4())
         return await self.async_setup_tracker(
-            tracker_id, display_name, kind=KIND_SHARED
+            tracker_id, display_name, kind=KIND_SHARED, created_by=created_by
         )
 
     async def async_delete_tracker(self, tracker_id: str) -> None:

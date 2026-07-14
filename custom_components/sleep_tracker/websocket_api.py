@@ -16,6 +16,7 @@ from .const import (
     EVENT_AWAKE,
     EVENT_FELL_ASLEEP,
     EVENT_STILL_AWAKE,
+    KIND_SHARED,
     KIND_USER,
 )
 from .models import (
@@ -62,7 +63,16 @@ _UPDATE_SETTINGS_FIELDS: dict = {
     "awakening_grace_minutes": vol.All(int, vol.Range(min=0, max=180)),
     "skip_event_review": bool,
     "skip_phase_review": bool,
-    "export_url": vol.Any(vol.All(str, vol.Length(max=2048)), None),
+    "export_url": vol.Any(
+        vol.All(
+            str,
+            vol.Length(max=2048),
+            vol.Match(
+                r"^https?://", msg="export_url must be an http(s) URL"
+            ),
+        ),
+        None,
+    ),
     "export_headers": vol.Schema({_short_str: vol.All(str, vol.Length(max=_MAX_HEADER_LEN))}),
     "export_environment_data": bool,
     "retention_days": vol.All(int, vol.Range(min=7, max=365)),
@@ -191,7 +201,9 @@ async def ws_create_shared_tracker(
     """Create a new shared tracker (e.g. for a baby)."""
     coordinator = _get_coordinator(hass)
     try:
-        config = await coordinator.async_create_shared_tracker(msg["display_name"])
+        config = await coordinator.async_create_shared_tracker(
+            msg["display_name"], created_by=connection.user.id
+        )
         connection.send_result(msg["id"], config)
     except HomeAssistantError as err:
         connection.send_error(msg["id"], "create_failed", str(err))
@@ -209,10 +221,25 @@ async def ws_create_shared_tracker(
 async def ws_delete_tracker(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
-    """Delete a tracker (personal trackers: only the owner; shared: any authed)."""
+    """Delete a tracker.
+
+    Personal trackers: only the owner. Shared trackers: only the creator or
+    an HA admin — deletion wipes all history, so mere shared access (which any
+    authenticated user has) is not enough.
+    """
     coordinator = _get_coordinator(hass)
     try:
         tracker_id = _resolve_tracker_id(connection, msg, coordinator)
+        config = coordinator.store.get_tracker_config(tracker_id)
+        if (
+            config is not None
+            and config.kind == KIND_SHARED
+            and not connection.user.is_admin
+            and config.created_by != connection.user.id
+        ):
+            raise HomeAssistantError(
+                "Only the creator or an admin can delete a shared tracker"
+            )
         await coordinator.async_delete_tracker(tracker_id)
         connection.send_result(msg["id"], {"success": True})
     except HomeAssistantError as err:

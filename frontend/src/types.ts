@@ -119,7 +119,7 @@ export type TrackerKind = "user" | "shared";
 export interface TrackerConfig {
   tracker_id: string;
   kind: TrackerKind;
-  enabled: boolean;
+  created_by: string | null;
   display_name: string;
   sleep_onset_minutes: number;
   fall_asleep_latency_minutes: number;

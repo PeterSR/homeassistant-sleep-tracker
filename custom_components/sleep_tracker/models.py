@@ -124,7 +124,7 @@ class TrackerConfig:
 
     tracker_id: str
     kind: str = KIND_USER  # KIND_USER | KIND_SHARED
-    enabled: bool = True
+    created_by: str | None = None  # HA user id that created a shared tracker
     display_name: str = ""
     sleep_onset_minutes: int = 0
     fall_asleep_latency_minutes: int = 15
@@ -150,7 +150,7 @@ class TrackerConfig:
         return {
             "tracker_id": self.tracker_id,
             "kind": self.kind,
-            "enabled": self.enabled,
+            "created_by": self.created_by,
             "display_name": self.display_name,
             "sleep_onset_minutes": self.sleep_onset_minutes,
             "fall_asleep_latency_minutes": self.fall_asleep_latency_minutes,
@@ -180,7 +180,7 @@ class TrackerConfig:
         return cls(
             tracker_id=tracker_id,
             kind=data.get("kind", KIND_USER),
-            enabled=data.get("enabled", True),
+            created_by=data.get("created_by"),
             display_name=data.get("display_name", ""),
             sleep_onset_minutes=data.get("sleep_onset_minutes", 0),
             fall_asleep_latency_minutes=data.get("fall_asleep_latency_minutes", 15),
