@@ -2,8 +2,8 @@ import { LitElement, html, css, nothing, type PropertyValues } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import type { HomeAssistant, TrackerState, ToolbarConfig } from "../types";
 import type { SleepTrackerApi } from "../api";
-import { tokens, viewStyles, buttonStyles, cardStyles } from "../styles";
-import { formatTime, timeAgo, formatDuration } from "../utils";
+import { tokens, viewStyles, buttonStyles, cardStyles, statStyles } from "../styles";
+import { formatTime, timeAgo, formatDuration, phaseTotals } from "../utils";
 
 import "../components/setup-prompt";
 import "../components/timeline-bar";
@@ -20,9 +20,26 @@ export class MainView extends LitElement {
   @property({ attribute: false }) trackerState!: TrackerState;
   @property({ type: Boolean }) narrow = false;
 
+  private _ticker?: ReturnType<typeof setInterval>;
+
   connectedCallback(): void {
     super.connectedCallback();
     this._setToolbar();
+    // Live durations are derived from the clock, not from state updates, so
+    // re-render periodically while a session is running.
+    this._ticker = setInterval(() => {
+      if (this.trackerState?.active_session) {
+        this.requestUpdate();
+      }
+    }, 30000);
+  }
+
+  disconnectedCallback(): void {
+    if (this._ticker !== undefined) {
+      clearInterval(this._ticker);
+      this._ticker = undefined;
+    }
+    super.disconnectedCallback();
   }
 
   willUpdate(changed: PropertyValues): void {
@@ -206,6 +223,9 @@ export class MainView extends LitElement {
     // Active session
     if (active) {
       const paused = active.status === "paused";
+      const { asleepMinutes, awakeMinutes } = phaseTotals(active.phases, true);
+      const goalMinutes = this.trackerState.config?.sleep_goal_minutes ?? 0;
+      const goalMet = goalMinutes > 0 && asleepMinutes >= goalMinutes;
       return html`
         <div class="container">
           <ha-card>
@@ -214,6 +234,22 @@ export class MainView extends LitElement {
               <div>
                 <div class="status">${paused ? "Paused" : "Sleeping"}</div>
                 <div class="started">Started ${formatTime(active.started_at)} (${timeAgo(active.started_at)})</div>
+              </div>
+            </div>
+
+            <div class="stats-grid live-stats">
+              <div class="stat">
+                <div class="stat-value">${formatDuration(asleepMinutes)}</div>
+                <div class="stat-label">Asleep so far</div>
+                ${goalMinutes > 0
+                  ? html`<div class="stat-goal ${goalMet ? "met" : "unmet"}">
+                      Goal: ${formatDuration(goalMinutes)}
+                    </div>`
+                  : nothing}
+              </div>
+              <div class="stat">
+                <div class="stat-value">${formatDuration(awakeMinutes)}</div>
+                <div class="stat-label">Awake</div>
               </div>
             </div>
 
@@ -341,7 +377,21 @@ export class MainView extends LitElement {
     viewStyles,
     buttonStyles,
     cardStyles,
+    statStyles,
     css`
+      .live-stats {
+        margin-top: var(--ha-space-4, 16px);
+      }
+      .stat-goal {
+        font-size: 10px;
+        margin-top: 2px;
+      }
+      .stat-goal.met {
+        color: var(--sleep-color-success, #009E73);
+      }
+      .stat-goal.unmet {
+        color: var(--secondary-text-color);
+      }
       .section h3 {
         font-size: var(--ha-font-size-m, 14px);
         font-weight: var(--ha-font-weight-medium, 500);

@@ -1,3 +1,5 @@
+import type { SleepPhase } from "./types";
+
 export function formatDuration(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = Math.round(minutes % 60);
@@ -39,4 +41,36 @@ export function timeAgo(iso: string): string {
 
 export function efficiencyPercent(efficiency: number): string {
   return `${Math.round(efficiency * 100)}%`;
+}
+
+/**
+ * Sum asleep/awake minutes from materialized phases.
+ *
+ * For a running session the backend materializes phases up to the server's
+ * "now" at request time, so the last phase is stretched to the client's clock
+ * to keep the numbers moving between state updates.
+ */
+export function phaseTotals(
+  phases: SleepPhase[],
+  extendToNow = false
+): { asleepMinutes: number; awakeMinutes: number } {
+  let asleepMinutes = 0;
+  let awakeMinutes = 0;
+  const now = Date.now();
+
+  phases.forEach((phase, index) => {
+    const start = new Date(phase.start).getTime();
+    let end = new Date(phase.end).getTime();
+    if (extendToNow && index === phases.length - 1) {
+      end = Math.max(end, now);
+    }
+    const minutes = Math.max(0, (end - start) / 60000);
+    if (phase.state === "asleep") {
+      asleepMinutes += minutes;
+    } else {
+      awakeMinutes += minutes;
+    }
+  });
+
+  return { asleepMinutes, awakeMinutes };
 }
