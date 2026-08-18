@@ -111,6 +111,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "name": "sleep-tracker-panel",
                     "embed_iframe": False,
                     "trust_external": False,
+                    # HA 2026.8 pads the ha-panel-custom wrapper with the device
+                    # safe-area insets and sets display:block on it. That makes
+                    # the wrapper our containing block at height:auto, so the
+                    # panel's height:100% collapses and its scroll container
+                    # stops working. We consume the insets ourselves instead.
+                    "handle_safe_area": True,
                     "module_url": panel_url,
                 }
             },
