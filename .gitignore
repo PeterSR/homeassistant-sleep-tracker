@@ -4,3 +4,5 @@ node_modules/
 .dev
 .claude/
 custom_components/sleep_tracker/frontend/dist/
+.venv/
+.pytest_cache/
