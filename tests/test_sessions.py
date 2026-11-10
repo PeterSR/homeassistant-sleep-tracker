@@ -320,3 +320,27 @@ async def test_rest_export_session_changed_during_post(
     await async_export_session(hass, coordinator, "s1", raise_if_changed=False)
     assert coordinator.store.get_session("s1").exported is False
     assert "changed or removed during export" in caplog.text
+
+
+async def test_auto_export_changed_during_post_is_quiet(
+    hass, coordinator, aioclient_mock, caplog
+):
+    await coordinator.async_update_tracker_config(
+        "tracker-1", export_url="https://example.org/sleep"
+    )
+    add_session(coordinator, "s1", finalized=False)
+    events = []
+    hass.bus.async_listen("sleep_tracker_session_finalized", events.append)
+
+    async def unfinalize(method, url, data):
+        await coordinator.async_unfinalize_session("tracker-1", "s1")
+        return AiohttpClientMockResponse(method, url, status=200)
+
+    aioclient_mock.post("https://example.org/sleep", side_effect=unfinalize)
+    await coordinator.async_finalize_session("tracker-1", "s1")
+    await hass.async_block_till_done()
+
+    assert "Auto-export failed" not in caplog.text
+    assert "auto-exported on finalization" not in caplog.text
+    assert coordinator.store.get_session("s1").exported is False
+    assert len(events) == 1

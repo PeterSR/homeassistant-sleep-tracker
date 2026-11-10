@@ -185,7 +185,7 @@ event_fell_asleep:
 
 export_session:
   name: Export session
-  description: Export a completed sleep session to the configured REST endpoint.
+  description: Export a finalized sleep session to the configured REST endpoint. Fails, and leaves the session unexported, if it is changed while the request is in flight.
   fields:
     session_id:
       name: Session ID

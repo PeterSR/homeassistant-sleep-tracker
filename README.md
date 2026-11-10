@@ -72,12 +72,16 @@ All services live under the `sleep_tracker` domain - open **Developer Tools → 
 | `event_awake` | Record an "awake" pulse (auto-demoted to `still_awake` if already awake). |
 | `event_still_awake` | Extend the awake window - no state change. |
 | `event_fell_asleep` | Force an immediate asleep transition, bypassing the latency model. |
-| `export_session` | POST a finalized session to the configured REST endpoint. |
+| `export_session` | POST a finalized session to the configured REST endpoint. Fails, and leaves the session unexported, if it is changed while the request is in flight. |
 | `list_sessions` | Admin only, returns data. List sessions (`session_id`, `tracker_id`, `started_at`, `ended_at`, `finalized`, `exported`, `revision`), oldest first. Optional filters: `tracker_id`, `finalized`, `exported`. |
 | `get_session` | Admin only, returns data. The export payload of a completed session, identical to what the REST export posts (including `environment_history` when enabled), as `{"session": payload, "revision": n}`. |
 | `mark_exported` | Admin only. Set the `exported` flag of a session (`exported` defaults to true). Marking exported requires a finalized session; clearing is always allowed. Optional `revision`: when marking exported, refused unless it equals the session's current revision. |
 
 All tracker-facing services take `tracker_id`. For a personal tracker this is the HA user id (`{{ states.person.your_name.attributes.user_id }}`); for a shared tracker, copy the id from **Settings → Tracker ID** in the panel. Most services also accept optional `source`, `automation_id`, and `automation_trigger_id` for provenance - these show up in the session's event review so you can tell which automation fired what.
+
+### REST export payload
+
+Each finalized session is POSTed as JSON with `session_id`, `tracker_id`, `started_at`, `ended_at`, `events`, `phases`, `stats`, `note`, `rating_quality`, `rating_feeling`, `tags`, `revision` and, when enabled, `environment_history`. The top-level `revision` key is new in 0.7.0, so receivers that validate the body strictly must allow it.
 
 ### Pulling sessions with actions
 

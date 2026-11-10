@@ -72,7 +72,7 @@ async def async_build_export_payload(
         "note": session.note,
         "rating_quality": session.rating_quality,
         "rating_feeling": session.rating_feeling,
-        "tags": session.tags,
+        "tags": list(session.tags),
         # Read before any await below, so it always matches the data above.
         "revision": session.revision,
     }
@@ -103,12 +103,13 @@ async def async_export_session(
     session_id: str,
     *,
     raise_if_changed: bool = True,
-) -> None:
+) -> bool:
     """Export a finalized session to the user's configured REST endpoint.
 
     If the session changed or was removed while the request was in flight it
     is left unexported. That raises ExportError unless `raise_if_changed` is
-    false (auto-export), which only logs a warning.
+    false (auto-export), which only logs a warning. Returns True when the
+    session was marked exported, False when it was left unexported.
     """
     session = coordinator.store.get_session(session_id)
     if session is None:
@@ -172,5 +173,6 @@ async def async_export_session(
             raise ExportError(
                 "Session changed during export; not marked exported"
             ) from err
-        return
+        return False
     _LOGGER.info("Session %s exported successfully", session_id)
+    return True
