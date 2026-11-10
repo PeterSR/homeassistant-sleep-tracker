@@ -6,7 +6,10 @@ import voluptuous as vol
 
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.service import async_register_admin_service
+
+from homeassistant.util import dt as dt_util
 
 from .automation_meta import resolve_automation_metadata
 from .const import (
@@ -47,15 +50,15 @@ SCHEMA_SESSION_ID = vol.Schema(
 SCHEMA_LIST_SESSIONS = vol.Schema(
     {
         vol.Optional("tracker_id"): str,
-        vol.Optional("finalized"): bool,
-        vol.Optional("exported"): bool,
+        vol.Optional("finalized"): cv.boolean,
+        vol.Optional("exported"): cv.boolean,
     }
 )
 
 SCHEMA_MARK_EXPORTED = vol.Schema(
     {
         vol.Required("session_id"): str,
-        vol.Optional("exported", default=True): bool,
+        vol.Optional("exported", default=True): cv.boolean,
     }
 )
 
@@ -65,6 +68,14 @@ SCHEMA_REOPEN = vol.Schema(
         vol.Required("session_id"): str,
     }
 )
+
+
+def _start_sort_key(session) -> tuple[float, str]:
+    """Sort by parsed start time, falling back to the raw string."""
+    parsed = dt_util.parse_datetime(session.started_at)
+    if parsed is None:
+        return (float("inf"), session.started_at)
+    return (dt_util.as_utc(parsed).timestamp(), session.started_at)
 
 
 async def _automation_kwargs(
@@ -173,7 +184,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             and ("finalized" not in call.data or s.finalized == call.data["finalized"])
             and ("exported" not in call.data or s.exported == call.data["exported"])
         ]
-        sessions.sort(key=lambda s: s.started_at)
+        sessions.sort(key=_start_sort_key)
         return {
             "sessions": [
                 {
@@ -202,7 +213,11 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         session_id = call.data["session_id"]
         if coordinator.store.get_session(session_id) is None:
             raise HomeAssistantError(f"Session {session_id} not found")
+        session = coordinator.store.get_session(session_id)
+        if session.is_active:
+            raise HomeAssistantError("Cannot mark an active session as exported")
         coordinator.store.update_session(session_id, exported=call.data["exported"])
+        coordinator._notify_listeners(session.tracker_id)
 
     hass.services.async_register(
         DOMAIN, SERVICE_START_SLEEP, handle_start_sleep,

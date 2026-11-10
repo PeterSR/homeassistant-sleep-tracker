@@ -1061,7 +1061,7 @@ class SleepTrackerCoordinator:
         if not session.finalized:
             raise HomeAssistantError("Session is not finalized")
 
-        self.store.update_session(session_id, finalized=False)
+        self.store.update_session(session_id, finalized=False, exported=False)
         self._notify_listeners(tracker_id)
         _LOGGER.info(
             "Session %s unfinalized for tracker %s", session_id, tracker_id

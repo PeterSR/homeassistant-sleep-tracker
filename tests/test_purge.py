@@ -55,3 +55,9 @@ async def test_keep_unexported_round_trips(coordinator, value):
     config = coordinator.store.get_tracker_config("tracker-1")
     assert TrackerConfig.from_dict(config.to_dict()).keep_unexported is value
     assert TrackerConfig.from_dict({"tracker_id": "x"}).keep_unexported is False
+
+
+async def test_old_unfinalized_session_is_protected(coordinator):
+    await coordinator.async_update_tracker_config("tracker-1", keep_unexported=True)
+    add_session(coordinator, "old-open", days_ago=200, finalized=False, exported=False)
+    assert coordinator.store.purge_old_sessions("tracker-1", 90) == 0

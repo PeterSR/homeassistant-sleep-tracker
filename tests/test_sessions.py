@@ -65,6 +65,7 @@ async def test_get_session_matches_rest_export(hass, coordinator, aioclient_mock
     aioclient_mock.post("https://example.org/sleep", status=200)
 
     result = await _call(hass, "get_session", {"session_id": session["session_id"]}, response=True)
+    assert coordinator.store.get_session(session["session_id"]).exported is False
     await async_export_session(hass, coordinator, session["session_id"])
 
     assert len(aioclient_mock.mock_calls) == 1
@@ -141,3 +142,42 @@ async def test_actions_are_admin_only(
         hass, service, data, response=response,
         context=Context(user_id=hass_admin_user.id),
     )
+
+
+async def test_mark_exported_rejects_active_session(hass, coordinator):
+    add_session(coordinator, "live", active=True, finalized=False)
+    with pytest.raises(HomeAssistantError):
+        await _call(hass, "mark_exported", {"session_id": "live"})
+
+
+async def test_mark_exported_notifies_listeners(hass, coordinator):
+    add_session(coordinator, "s1")
+    calls = []
+    coordinator.add_tracker_listener("tracker-1", lambda: calls.append(1))
+    await _call(hass, "mark_exported", {"session_id": "s1"})
+    assert calls
+
+
+async def test_unfinalize_resets_exported(hass, coordinator):
+    add_session(coordinator, "s1", finalized=True, exported=False)
+    await _call(hass, "mark_exported", {"session_id": "s1"})
+    await coordinator.async_unfinalize_session("tracker-1", "s1")
+    await coordinator.async_finalize_session("tracker-1", "s1")
+
+    result = await _call(hass, "list_sessions", {"exported": False}, response=True)
+    assert [s["session_id"] for s in result["sessions"]] == ["s1"]
+
+
+async def test_list_sessions_sorts_by_parsed_datetime(hass, coordinator):
+    from custom_components.sleep_tracker.models import SleepSession
+
+    for sid, start in (
+        ("later", "2026-01-01T01:00:00+00:00"),
+        ("earlier", "2026-01-01T02:30:00+02:00"),
+    ):
+        coordinator.store.add_session(
+            SleepSession(session_id=sid, tracker_id="tracker-1", started_at=start,
+                         ended_at=start, finalized=True)
+        )
+    result = await _call(hass, "list_sessions", {}, response=True)
+    assert [s["session_id"] for s in result["sessions"]] == ["earlier", "later"]

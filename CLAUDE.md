@@ -23,6 +23,8 @@ custom_components/sleep_tracker/   # HA custom component (Python)
   config_flow.py                   # Singleton integration setup
   const.py                         # Constants
 
+tests/                             # pytest suite (pytest-homeassistant-custom-component, run with uv run pytest)
+
 frontend/                          # Lit + TypeScript panel
   src/
     sleep-tracker-panel.ts         # Main panel with router

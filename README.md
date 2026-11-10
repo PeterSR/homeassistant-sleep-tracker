@@ -57,7 +57,7 @@ For each tracker (`{slug}` = slugified display name):
 
 Use `sensor.sleep_tracker_{slug}_phase == 'asleep'` as a condition when you need "actually asleep" rather than "is in bed".
 
-The `status` sensor tells a paused session apart from an active one, which the `in_session` binary sensor does not. It has the attributes `tracker_id`, `session_id` and `started_at` (both `null` while `idle`).
+The `status` sensor tells a paused session apart from an active one, which the `in_session` binary sensor does not. It has the attributes `tracker_id`, `session_id` and `started_at` (`session_id` and `started_at` are `null` while `idle`).
 
 ## Services
 
@@ -85,7 +85,9 @@ All tracker-facing services take `tracker_id`. For a personal tracker this is th
 
 ### Keeping unexported sessions
 
-Retention normally deletes sessions older than the retention period when a new session starts. Turn on **Keep sessions until exported** in a tracker's settings (`keep_unexported`) and sessions with `exported` false are never deleted by retention. The same protection always applies to a tracker with an export URL. Sessions pulled with the actions above stay protected until you call `mark_exported`.
+Retention normally deletes sessions older than the retention period when a new session starts. Turn on **Keep sessions until exported** in a tracker's settings (`keep_unexported`) and sessions with `exported` false are never deleted by retention. The same protection always applies to a tracker with an export URL. Sessions pulled with the actions above stay protected until you call `mark_exported`. Unfinalizing a session resets its `exported` flag, so a re-finalized session is delivered again.
+
+> **One flag for every delivery path:** `exported` is a single flag per session, shared by the REST export and any pull consumer. A successful REST delivery marks the session exported, which hides it from a consumer that filters on `exported: false`. Use either the REST export or a pull consumer (via the actions) for a given tracker, not both.
 
 ## Automation example
 
