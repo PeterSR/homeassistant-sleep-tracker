@@ -73,6 +73,8 @@ async def async_build_export_payload(
         "rating_quality": session.rating_quality,
         "rating_feeling": session.rating_feeling,
         "tags": session.tags,
+        # Read before any await below, so it always matches the data above.
+        "revision": session.revision,
     }
 
     if (
@@ -99,8 +101,15 @@ async def async_export_session(
     hass: HomeAssistant,
     coordinator: SleepTrackerCoordinator,
     session_id: str,
+    *,
+    raise_if_changed: bool = True,
 ) -> None:
-    """Export a completed session to the user's configured REST endpoint."""
+    """Export a finalized session to the user's configured REST endpoint.
+
+    If the session changed or was removed while the request was in flight it
+    is left unexported. That raises ExportError unless `raise_if_changed` is
+    false (auto-export), which only logs a warning.
+    """
     session = coordinator.store.get_session(session_id)
     if session is None:
         raise ExportError(f"Session {session_id} not found")
@@ -109,7 +118,6 @@ async def async_export_session(
 
     if not session.finalized:
         raise ExportError("Session is not finalized")
-    revision = session.revision
 
     config = coordinator.store.get_tracker_config(session.tracker_id)
     if config is None or not config.export_url:
@@ -152,12 +160,17 @@ async def async_export_session(
         raise ExportError(f"Export request failed: {err}") from err
 
     try:
-        coordinator.async_set_exported(session_id, True, revision)
-    except HomeAssistantError:
-        # Unfinalized or re-finalized while the request was in flight: the
-        # delivered data may be stale, so leave the session unexported.
+        coordinator.async_set_exported(session_id, True, payload["revision"])
+    except HomeAssistantError as err:
+        # Unfinalized, re-finalized, active or deleted while the request was
+        # in flight: the delivered data may be stale, so leave it unexported.
         _LOGGER.warning(
-            "Session %s changed during export, not marking it exported", session_id
+            "Session %s changed or removed during export, not marking it exported",
+            session_id,
         )
+        if raise_if_changed:
+            raise ExportError(
+                "Session changed during export; not marked exported"
+            ) from err
         return
     _LOGGER.info("Session %s exported successfully", session_id)

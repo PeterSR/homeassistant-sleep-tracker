@@ -1041,7 +1041,9 @@ class SleepTrackerCoordinator:
         if config and config.export_url:
             try:
                 from .export import async_export_session
-                await async_export_session(self.hass, self, session_id)
+                await async_export_session(
+                    self.hass, self, session_id, raise_if_changed=False
+                )
                 _LOGGER.info("Session %s auto-exported on finalization", session_id)
             except Exception:
                 _LOGGER.exception("Auto-export failed for session %s", session_id)

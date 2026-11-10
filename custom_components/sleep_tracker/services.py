@@ -31,6 +31,13 @@ SERVICE_LIST_SESSIONS = "list_sessions"
 SERVICE_GET_SESSION = "get_session"
 SERVICE_MARK_EXPORTED = "mark_exported"
 
+def _revision(value):
+    """A non-negative integer; bool is rejected although it is an int."""
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise vol.Invalid("revision must be a non-negative integer")
+    return value
+
+
 SCHEMA_TRACKER_AND_SOURCE = vol.Schema(
     {
         vol.Required("tracker_id"): str,
@@ -58,7 +65,7 @@ SCHEMA_MARK_EXPORTED = vol.Schema(
     {
         vol.Required("session_id"): str,
         vol.Optional("exported", default=True): cv.boolean,
-        vol.Optional("revision"): vol.All(int, vol.Range(min=0)),
+        vol.Optional("revision"): _revision,
     }
 )
 
@@ -207,8 +214,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         payload = await async_build_export_payload(
             hass, coordinator, call.data["session_id"]
         )
-        session = coordinator.store.get_session(call.data["session_id"])
-        return {"session": payload, "revision": session.revision}
+        # The builder reads the revision before its first await, so the
+        # revision always belongs to the payload it is returned with.
+        return {"session": payload, "revision": payload["revision"]}
 
     async def handle_mark_exported(call: ServiceCall) -> None:
         coordinator = _get_coordinator(hass)

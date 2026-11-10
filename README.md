@@ -83,7 +83,7 @@ All tracker-facing services take `tracker_id`. For a personal tracker this is th
 
 `list_sessions`, `get_session` and `mark_exported` let another integration or script pull finished sessions instead of relying on the REST push. A typical loop calls `list_sessions` with `finalized: true` and `exported: false`, fetches each result with `get_session`, delivers it, then calls `mark_exported`. The first two actions only return data (`return_response`), and all three require an admin user.
 
-Every finalization increments the session's `revision`. Pass the `revision` from `get_session` to `mark_exported`: if the session was unfinalized, edited and finalized again while you were delivering, the revisions differ, the call is refused, and the session stays unexported so the next `list_sessions` returns it again.
+The export payload (REST and `get_session`) includes the `revision`, so receivers can order deliveries. The REST export can deliver two revisions concurrently if a session is re-finalized while a request is in flight; receivers should keep the highest revision. Every finalization increments the session's `revision`. Pass the `revision` from `get_session` to `mark_exported`: if the session was unfinalized, edited and finalized again while you were delivering, the revisions differ, the call is refused, and the session stays unexported so the next `list_sessions` returns it again.
 
 ### Keeping unexported sessions
 

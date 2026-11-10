@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
+import voluptuous as vol
+from pytest_homeassistant_custom_component.test_util.aiohttp import (
+    AiohttpClientMockResponse,
+)
 from homeassistant.core import Context
 from homeassistant.exceptions import HomeAssistantError, Unauthorized
 
 from custom_components.sleep_tracker.const import DOMAIN
-from custom_components.sleep_tracker.export import async_export_session
+from custom_components.sleep_tracker.export import ExportError, async_export_session
 
 from .helpers import add_session
 
@@ -65,6 +71,7 @@ async def test_get_session_matches_rest_export(hass, coordinator, aioclient_mock
     await coordinator.async_stop_sleep("tracker-1", "test")
     await coordinator.async_complete_session("tracker-1", session["session_id"])
     # Finalize directly so no auto-export runs before the REST call under test.
+    # This leaves revision 0, like a session stored before revisions existed.
     coordinator.store.update_session(session["session_id"], finalized=True)
     aioclient_mock.post("https://example.org/sleep", status=200)
 
@@ -75,7 +82,8 @@ async def test_get_session_matches_rest_export(hass, coordinator, aioclient_mock
 
     assert len(aioclient_mock.mock_calls) == 1
     posted = aioclient_mock.mock_calls[0][2]
-    assert result == {"session": posted, "revision": 0}
+    assert result == {"session": posted, "revision": posted["revision"]}
+    assert posted["revision"] == coordinator.store.get_session(session["session_id"]).revision
     assert posted["session_id"] == session["session_id"]
     assert posted["tracker_id"] == "tracker-1"
     assert "environment_history" not in posted
@@ -246,3 +254,69 @@ async def test_rest_export_requires_finalized_and_notifies(hass, coordinator, ai
     await async_export_session(hass, coordinator, "done")
     assert coordinator.store.get_session("done").exported is True
     assert calls
+
+
+async def test_get_session_revision_matches_payload_during_await(hass, coordinator):
+    await coordinator.async_update_tracker_config(
+        "tracker-1",
+        export_environment_data=True,
+        environment_entities=["sensor.temperature"],
+    )
+    add_session(coordinator, "s1", finalized=False)
+    await coordinator.async_finalize_session("tracker-1", "s1")
+
+    async def refinalize(*args, **kwargs):
+        await coordinator.async_unfinalize_session("tracker-1", "s1")
+        await coordinator.async_update_session_meta("tracker-1", "s1", note="edited")
+        await coordinator.async_finalize_session("tracker-1", "s1")
+        return {}
+
+    with patch(
+        "custom_components.sleep_tracker.export.async_get_state_history", refinalize
+    ):
+        result = await _call(hass, "get_session", {"session_id": "s1"}, response=True)
+
+    assert coordinator.store.get_session("s1").revision == 2
+    assert result["revision"] == 1
+    assert result["session"]["revision"] == 1
+    assert result["session"]["note"] is None
+
+
+@pytest.mark.parametrize("bad", [-1, True, "1", 1.5])
+async def test_mark_exported_rejects_bad_revision(hass, coordinator, bad):
+    add_session(coordinator, "s1")
+    with pytest.raises(vol.Invalid):
+        await _call(hass, "mark_exported", {"session_id": "s1", "revision": bad})
+
+
+async def test_mark_exported_ignores_revision_when_clearing(hass, coordinator):
+    add_session(coordinator, "s1", exported=True)
+    await _call(hass, "mark_exported", {"session_id": "s1", "exported": False, "revision": 99})
+    assert coordinator.store.get_session("s1").exported is False
+
+
+async def test_rest_export_session_changed_during_post(
+    hass, coordinator, aioclient_mock, caplog
+):
+    await coordinator.async_update_tracker_config(
+        "tracker-1", export_url="https://example.org/sleep"
+    )
+    add_session(coordinator, "s1", finalized=True)
+
+    async def unfinalize(method, url, data):
+        await coordinator.async_unfinalize_session("tracker-1", "s1")
+        return AiohttpClientMockResponse(method, url, status=200)
+
+    aioclient_mock.post("https://example.org/sleep", side_effect=unfinalize)
+
+    with pytest.raises(ExportError, match="changed during export"):
+        await async_export_session(hass, coordinator, "s1")
+    assert coordinator.store.get_session("s1").exported is False
+    assert "changed or removed during export" in caplog.text
+
+    # Auto-export mode only logs.
+    coordinator.store.update_session("s1", finalized=True)
+    caplog.clear()
+    await async_export_session(hass, coordinator, "s1", raise_if_changed=False)
+    assert coordinator.store.get_session("s1").exported is False
+    assert "changed or removed during export" in caplog.text
