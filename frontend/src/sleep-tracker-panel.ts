@@ -484,6 +484,21 @@ export class SleepTrackerPanel extends LitElement {
       :host {
         display: block;
         height: 100%;
+        /* We opt out of HA's automatic safe-area padding (handle_safe_area) so
+           the ha-panel-custom wrapper stays unstyled and height:100% keeps
+           resolving against a container with a definite height. Applying the
+           insets here instead keeps the scroll container constrained. */
+        box-sizing: border-box;
+        padding-top: var(--safe-area-inset-top, 0px);
+        padding-bottom: var(--safe-area-inset-bottom, 0px);
+        padding-left: var(
+          --safe-area-content-inset-left,
+          var(--safe-area-inset-left, 0px)
+        );
+        padding-right: var(
+          --safe-area-content-inset-right,
+          var(--safe-area-inset-right, 0px)
+        );
         --toolbar-height: var(--header-height, 56px);
       }
       .toolbar {

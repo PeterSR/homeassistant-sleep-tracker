@@ -185,7 +185,7 @@ event_fell_asleep:
 
 export_session:
   name: Export session
-  description: Export a completed sleep session to the configured REST endpoint.
+  description: Export a finalized sleep session to the configured REST endpoint. Fails, and leaves the session unexported, if it is changed while the request is in flight.
   fields:
     session_id:
       name: Session ID
@@ -193,3 +193,63 @@ export_session:
       required: true
       selector:
         text:
+
+list_sessions:
+  name: List sessions
+  description: List sessions with their export state and revision, oldest first. Returns the result as response data. Admin only.
+  fields:
+    tracker_id:
+      name: Tracker ID
+      description: Only return sessions of this tracker.
+      required: false
+      selector:
+        text:
+    finalized:
+      name: Finalized
+      description: Only return sessions whose finalized flag matches.
+      required: false
+      selector:
+        boolean:
+    exported:
+      name: Exported
+      description: Only return sessions whose exported flag matches.
+      required: false
+      selector:
+        boolean:
+
+get_session:
+  name: Get session
+  description: Return the export payload of a completed session, identical to what the REST export posts, plus the session revision. Admin only.
+  fields:
+    session_id:
+      name: Session ID
+      description: The UUID of the session.
+      required: true
+      selector:
+        text:
+
+mark_exported:
+  name: Mark session exported
+  description: Set or clear the exported flag of a session. Marking exported requires a finalized session; clearing is always allowed. Admin only.
+  fields:
+    session_id:
+      name: Session ID
+      description: The UUID of the session.
+      required: true
+      selector:
+        text:
+    exported:
+      name: Exported
+      description: The value to set.
+      required: false
+      default: true
+      selector:
+        boolean:
+    revision:
+      name: Revision
+      description: Optional. The revision returned by get_session. When marking exported, refused unless it equals the session's current revision.
+      required: false
+      selector:
+        number:
+          min: 0
+          mode: box

@@ -18,7 +18,15 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_point_in_utc_time
 from homeassistant.util import slugify
 
-from .const import DOMAIN, EVENT_AWAKE, PHASE_ASLEEP, PHASE_AWAKE
+from .const import (
+    DOMAIN,
+    EVENT_AWAKE,
+    PHASE_ASLEEP,
+    PHASE_AWAKE,
+    STATUS_ACTIVE,
+    STATUS_IDLE,
+    STATUS_PAUSED,
+)
 
 if TYPE_CHECKING:
     from .coordinator import SleepTrackerCoordinator
@@ -54,6 +62,7 @@ def create_tracker_sensors(
         SleepDurationSensor(coordinator, tracker_id),
         AwakeCountSensor(coordinator, tracker_id),
         PhaseSensor(coordinator, tracker_id),
+        StatusSensor(coordinator, tracker_id),
     ]
 
 
@@ -271,3 +280,38 @@ class AwakeCountSensor(_SleepTrackerSensorBase):
             self._attr_native_value = count
         else:
             self._attr_native_value = None
+
+
+class StatusSensor(_SleepTrackerSensorBase):
+    """Enum sensor: idle (no open session), active, or paused."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = [STATUS_IDLE, STATUS_ACTIVE, STATUS_PAUSED]
+    _attr_translation_key = "status"
+    _attr_icon = "mdi:sleep"
+
+    def __init__(self, coordinator, tracker_id):
+        super().__init__(coordinator, tracker_id)
+        self._attr_unique_id = f"sleep_tracker_{tracker_id}_status"
+        self.entity_id = f"sensor.sleep_tracker_{self._slug}_status"
+        self._attr_name = f"Sleep Tracker {self._display_name} Status"
+
+    @callback
+    def _update_from_coordinator(self) -> None:
+        session = self._coordinator.store.get_active_session(self._tracker_id)
+        if session is None:
+            self._attr_native_value = STATUS_IDLE
+            self._attr_extra_state_attributes = {
+                "tracker_id": self._tracker_id,
+                "session_id": None,
+                "started_at": None,
+            }
+            return
+        self._attr_native_value = (
+            STATUS_PAUSED if session.paused_at is not None else STATUS_ACTIVE
+        )
+        self._attr_extra_state_attributes = {
+            "tracker_id": self._tracker_id,
+            "session_id": session.session_id,
+            "started_at": session.started_at,
+        }

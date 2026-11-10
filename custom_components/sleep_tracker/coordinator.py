@@ -1032,15 +1032,21 @@ class SleepTrackerCoordinator:
         if session.finalized:
             raise HomeAssistantError("Session is already finalized")
 
-        self.store.update_session(session_id, finalized=True)
+        self.store.update_session(
+            session_id, finalized=True, revision=session.revision + 1
+        )
         self._edit_history.pop(session_id, None)
 
         config = self.store.get_tracker_config(tracker_id)
         if config and config.export_url:
             try:
                 from .export import async_export_session
-                await async_export_session(self.hass, self, session_id)
-                _LOGGER.info("Session %s auto-exported on finalization", session_id)
+                if await async_export_session(
+                    self.hass, self, session_id, raise_if_changed=False
+                ):
+                    _LOGGER.info(
+                        "Session %s auto-exported on finalization", session_id
+                    )
             except Exception:
                 _LOGGER.exception("Auto-export failed for session %s", session_id)
 
@@ -1050,6 +1056,31 @@ class SleepTrackerCoordinator:
             {"tracker_id": tracker_id, "session_id": session_id},
         )
         return self._session_to_dict(session)
+
+    @callback
+    def async_set_exported(
+        self, session_id: str, exported: bool, revision: int | None = None
+    ) -> None:
+        """Set the exported flag of a session and notify listeners.
+
+        Only a finalized session can be marked exported; clearing the flag is
+        always allowed. Active sessions are rejected. When `revision` is given
+        and exported is true, it must equal the session's current revision, so
+        a delivery of an older finalization cannot mark a re-finalized session.
+        """
+        session = self.store.get_session(session_id)
+        if session is None:
+            raise HomeAssistantError(f"Session {session_id} not found")
+        if session.is_active:
+            raise HomeAssistantError("Session is still active")
+        if exported and not session.finalized:
+            raise HomeAssistantError("Session is not finalized")
+        if exported and revision is not None and revision != session.revision:
+            raise HomeAssistantError(
+                f"Session revision is {session.revision}, not {revision}"
+            )
+        self.store.update_session(session_id, exported=exported)
+        self._notify_listeners(session.tracker_id)
 
     async def async_unfinalize_session(
         self, tracker_id: str, session_id: str
@@ -1061,7 +1092,7 @@ class SleepTrackerCoordinator:
         if not session.finalized:
             raise HomeAssistantError("Session is not finalized")
 
-        self.store.update_session(session_id, finalized=False)
+        self.store.update_session(session_id, finalized=False, exported=False)
         self._notify_listeners(tracker_id)
         _LOGGER.info(
             "Session %s unfinalized for tracker %s", session_id, tracker_id

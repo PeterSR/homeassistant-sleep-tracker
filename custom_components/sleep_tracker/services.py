@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import voluptuous as vol
 
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.service import async_register_admin_service
+from homeassistant.util import dt as dt_util
 
 from .automation_meta import resolve_automation_metadata
 from .const import (
@@ -24,6 +27,16 @@ SERVICE_EVENT_AWAKE = "event_awake"
 SERVICE_EVENT_STILL_AWAKE = "event_still_awake"
 SERVICE_EVENT_FELL_ASLEEP = "event_fell_asleep"
 SERVICE_EXPORT_SESSION = "export_session"
+SERVICE_LIST_SESSIONS = "list_sessions"
+SERVICE_GET_SESSION = "get_session"
+SERVICE_MARK_EXPORTED = "mark_exported"
+
+def _revision(value):
+    """A non-negative integer; bool is rejected although it is an int."""
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise vol.Invalid("revision must be a non-negative integer")
+    return value
+
 
 SCHEMA_TRACKER_AND_SOURCE = vol.Schema(
     {
@@ -40,12 +53,36 @@ SCHEMA_SESSION_ID = vol.Schema(
     }
 )
 
+SCHEMA_LIST_SESSIONS = vol.Schema(
+    {
+        vol.Optional("tracker_id"): str,
+        vol.Optional("finalized"): cv.boolean,
+        vol.Optional("exported"): cv.boolean,
+    }
+)
+
+SCHEMA_MARK_EXPORTED = vol.Schema(
+    {
+        vol.Required("session_id"): str,
+        vol.Optional("exported", default=True): cv.boolean,
+        vol.Optional("revision"): _revision,
+    }
+)
+
 SCHEMA_REOPEN = vol.Schema(
     {
         vol.Required("tracker_id"): str,
         vol.Required("session_id"): str,
     }
 )
+
+
+def _start_sort_key(session) -> tuple[float, str]:
+    """Sort by parsed start time, falling back to the raw string."""
+    parsed = dt_util.parse_datetime(session.started_at)
+    if parsed is None:
+        return (float("inf"), session.started_at)
+    return (dt_util.as_utc(parsed).timestamp(), session.started_at)
 
 
 async def _automation_kwargs(
@@ -145,6 +182,48 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         coordinator = _get_coordinator(hass)
         await async_export_session(hass, coordinator, call.data["session_id"])
 
+    async def handle_list_sessions(call: ServiceCall) -> dict:
+        coordinator = _get_coordinator(hass)
+        sessions = [
+            s
+            for s in coordinator.store.sessions.values()
+            if ("tracker_id" not in call.data or s.tracker_id == call.data["tracker_id"])
+            and ("finalized" not in call.data or s.finalized == call.data["finalized"])
+            and ("exported" not in call.data or s.exported == call.data["exported"])
+        ]
+        sessions.sort(key=_start_sort_key)
+        return {
+            "sessions": [
+                {
+                    "session_id": s.session_id,
+                    "tracker_id": s.tracker_id,
+                    "started_at": s.started_at,
+                    "ended_at": s.ended_at,
+                    "finalized": s.finalized,
+                    "exported": s.exported,
+                    "revision": s.revision,
+                }
+                for s in sessions
+            ]
+        }
+
+    async def handle_get_session(call: ServiceCall) -> dict:
+        from .export import async_build_export_payload
+
+        coordinator = _get_coordinator(hass)
+        payload = await async_build_export_payload(
+            hass, coordinator, call.data["session_id"]
+        )
+        # The builder reads the revision before its first await, so the
+        # revision always belongs to the payload it is returned with.
+        return {"session": payload, "revision": payload["revision"]}
+
+    async def handle_mark_exported(call: ServiceCall) -> None:
+        coordinator = _get_coordinator(hass)
+        coordinator.async_set_exported(
+            call.data["session_id"], call.data["exported"], call.data.get("revision")
+        )
+
     hass.services.async_register(
         DOMAIN, SERVICE_START_SLEEP, handle_start_sleep,
         schema=SCHEMA_TRACKER_AND_SOURCE,
@@ -177,6 +256,20 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         DOMAIN, SERVICE_EXPORT_SESSION, handle_export_session,
         schema=SCHEMA_SESSION_ID,
     )
+    async_register_admin_service(
+        hass, DOMAIN, SERVICE_LIST_SESSIONS, handle_list_sessions,
+        schema=SCHEMA_LIST_SESSIONS,
+        supports_response=SupportsResponse.ONLY,
+    )
+    async_register_admin_service(
+        hass, DOMAIN, SERVICE_GET_SESSION, handle_get_session,
+        schema=SCHEMA_SESSION_ID,
+        supports_response=SupportsResponse.ONLY,
+    )
+    async_register_admin_service(
+        hass, DOMAIN, SERVICE_MARK_EXPORTED, handle_mark_exported,
+        schema=SCHEMA_MARK_EXPORTED,
+    )
 
 
 async def async_unload_services(hass: HomeAssistant) -> None:
@@ -190,5 +283,8 @@ async def async_unload_services(hass: HomeAssistant) -> None:
         SERVICE_EVENT_STILL_AWAKE,
         SERVICE_EVENT_FELL_ASLEEP,
         SERVICE_EXPORT_SESSION,
+        SERVICE_LIST_SESSIONS,
+        SERVICE_GET_SESSION,
+        SERVICE_MARK_EXPORTED,
     ):
         hass.services.async_remove(DOMAIN, service)

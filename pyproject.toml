@@ -1,0 +1,29 @@
+[project]
+name = "homeassistant-sleep-tracker"
+version = "0.7.0"
+description = "Per-user sleep tracking for Home Assistant"
+requires-python = ">=3.14.2"
+license = "MIT"
+
+[dependency-groups]
+test = [
+    "pytest-homeassistant-custom-component==0.13.375",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.uv]
+# Not a Python package: this file only pins the test tools.
+package = false
+environments = ["sys_platform == 'linux'"]
+# Test with the versions Home Assistant pins (its package_constraints.txt for the release the test
+# harness targets), not whatever is newest on PyPI.
+constraint-dependencies = [
+    "cffi==2.0.0",
+    "cryptography==50.0.1",
+    "grpcio==1.83.1",
+    "protobuf==7.36.0",
+    "pyjwt==2.15.1",
+]

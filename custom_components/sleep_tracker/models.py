@@ -135,6 +135,7 @@ class TrackerConfig:
     export_headers: dict[str, str] = field(default_factory=dict)
     export_environment_data: bool = False
     retention_days: int = 90
+    keep_unexported: bool = False
     checklist: list[ChecklistItem] = field(default_factory=list)
     show_note: bool = True
     show_rating_quality: bool = True
@@ -161,6 +162,7 @@ class TrackerConfig:
             "export_headers": self.export_headers,
             "export_environment_data": self.export_environment_data,
             "retention_days": self.retention_days,
+            "keep_unexported": self.keep_unexported,
             "checklist": [item.to_dict() for item in self.checklist],
             "show_note": self.show_note,
             "show_rating_quality": self.show_rating_quality,
@@ -191,6 +193,7 @@ class TrackerConfig:
             export_headers=data.get("export_headers", {}),
             export_environment_data=data.get("export_environment_data", False),
             retention_days=data.get("retention_days", 90),
+            keep_unexported=data.get("keep_unexported", False),
             checklist=[
                 ChecklistItem.from_dict(item) for item in data.get("checklist", [])
             ],
@@ -287,6 +290,7 @@ class SleepSession:
     phases: list[SleepPhase] | None = None  # materialized on complete
     finalized: bool = False
     exported: bool = False
+    revision: int = 0  # incremented every time the session is finalized
     note: str | None = None
     rating_quality: int | None = None  # 1-5
     rating_feeling: int | None = None  # 1-5
@@ -320,6 +324,7 @@ class SleepSession:
             ),
             "finalized": self.finalized,
             "exported": self.exported,
+            "revision": self.revision,
             "note": self.note,
             "rating_quality": self.rating_quality,
             "rating_feeling": self.rating_feeling,
@@ -345,6 +350,7 @@ class SleepSession:
             ),
             finalized=data.get("finalized", False),
             exported=data.get("exported", False),
+            revision=data.get("revision", 0),
             note=data.get("note"),
             rating_quality=data.get("rating_quality"),
             rating_feeling=data.get("rating_feeling"),
