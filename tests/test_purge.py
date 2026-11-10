@@ -57,7 +57,12 @@ async def test_keep_unexported_round_trips(coordinator, value):
     assert TrackerConfig.from_dict({"tracker_id": "x"}).keep_unexported is False
 
 
-async def test_old_unfinalized_session_is_protected(coordinator):
+async def test_old_stopped_session_survives_start_with_guard(coordinator):
     await coordinator.async_update_tracker_config("tracker-1", keep_unexported=True)
-    add_session(coordinator, "old-open", days_ago=200, finalized=False, exported=False)
-    assert coordinator.store.purge_old_sessions("tracker-1", 90) == 0
+    add_session(coordinator, "old-stopped", days_ago=200, finalized=False, exported=False)
+    await coordinator.async_start_sleep("tracker-1", "test")
+    # Auto-finalize ran, then the purge skipped the unexported session.
+    session = coordinator.store.get_session("old-stopped")
+    assert session is not None
+    assert session.finalized is True
+    assert session.exported is False

@@ -1051,6 +1051,23 @@ class SleepTrackerCoordinator:
         )
         return self._session_to_dict(session)
 
+    @callback
+    def async_set_exported(self, session_id: str, exported: bool) -> None:
+        """Set the exported flag of a session and notify listeners.
+
+        Only a finalized session can be marked exported; clearing the flag is
+        always allowed. Active sessions are rejected.
+        """
+        session = self.store.get_session(session_id)
+        if session is None:
+            raise HomeAssistantError(f"Session {session_id} not found")
+        if session.is_active:
+            raise HomeAssistantError("Session is still active")
+        if exported and not session.finalized:
+            raise HomeAssistantError("Session is not finalized")
+        self.store.update_session(session_id, exported=exported)
+        self._notify_listeners(session.tracker_id)
+
     async def async_unfinalize_session(
         self, tracker_id: str, session_id: str
     ) -> dict:

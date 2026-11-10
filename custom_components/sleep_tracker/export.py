@@ -42,11 +42,11 @@ async def async_build_export_payload(
     if session is None:
         raise ExportError(f"Session {session_id} not found")
     if session.is_active:
-        raise ExportError("Cannot export an active session")
+        raise ExportError("Session is still active")
 
     config = coordinator.store.get_tracker_config(session.tracker_id)
     if config is None:
-        raise ExportError("Tracker not found for this session")
+        raise ExportError("Tracker not found")
 
     # Prefer stored (edited) phases; fall back to materializing from events
     if session.phases is not None:

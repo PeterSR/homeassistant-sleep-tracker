@@ -8,7 +8,6 @@ from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.service import async_register_admin_service
-
 from homeassistant.util import dt as dt_util
 
 from .automation_meta import resolve_automation_metadata
@@ -210,14 +209,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     async def handle_mark_exported(call: ServiceCall) -> None:
         coordinator = _get_coordinator(hass)
-        session_id = call.data["session_id"]
-        if coordinator.store.get_session(session_id) is None:
-            raise HomeAssistantError(f"Session {session_id} not found")
-        session = coordinator.store.get_session(session_id)
-        if session.is_active:
-            raise HomeAssistantError("Cannot mark an active session as exported")
-        coordinator.store.update_session(session_id, exported=call.data["exported"])
-        coordinator._notify_listeners(session.tracker_id)
+        coordinator.async_set_exported(
+            call.data["session_id"], call.data["exported"]
+        )
 
     hass.services.async_register(
         DOMAIN, SERVICE_START_SLEEP, handle_start_sleep,

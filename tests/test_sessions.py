@@ -65,6 +65,7 @@ async def test_get_session_matches_rest_export(hass, coordinator, aioclient_mock
     aioclient_mock.post("https://example.org/sleep", status=200)
 
     result = await _call(hass, "get_session", {"session_id": session["session_id"]}, response=True)
+    # Reading the payload does not change the exported flag; the REST export does.
     assert coordinator.store.get_session(session["session_id"]).exported is False
     await async_export_session(hass, coordinator, session["session_id"])
 
@@ -74,7 +75,6 @@ async def test_get_session_matches_rest_export(hass, coordinator, aioclient_mock
     assert posted["session_id"] == session["session_id"]
     assert posted["tracker_id"] == "tracker-1"
     assert "environment_history" not in posted
-    # Reading the payload does not change the exported flag; the REST export does.
     assert coordinator.store.get_session(session["session_id"]).exported is True
 
 
@@ -107,7 +107,7 @@ async def test_get_session_errors(hass, coordinator):
 
 
 async def test_mark_exported(hass, coordinator):
-    add_session(coordinator, "s1", exported=False)
+    add_session(coordinator, "s1", exported=False, finalized=True)
 
     await _call(hass, "mark_exported", {"session_id": "s1"})
     assert coordinator.store.get_session("s1").exported is True
@@ -150,8 +150,27 @@ async def test_mark_exported_rejects_active_session(hass, coordinator):
         await _call(hass, "mark_exported", {"session_id": "live"})
 
 
+async def test_mark_exported_requires_finalized(hass, coordinator):
+    add_session(coordinator, "s1", finalized=False)
+    with pytest.raises(HomeAssistantError):
+        await _call(hass, "mark_exported", {"session_id": "s1"})
+    assert coordinator.store.get_session("s1").exported is False
+    # Clearing the flag is always allowed.
+    await _call(hass, "mark_exported", {"session_id": "s1", "exported": False})
+
+
+async def test_mark_exported_after_unfinalize_race(hass, coordinator):
+    add_session(coordinator, "s1", finalized=True)
+    result = await _call(hass, "get_session", {"session_id": "s1"}, response=True)
+    assert result["session"]["session_id"] == "s1"
+    await coordinator.async_unfinalize_session("tracker-1", "s1")
+    with pytest.raises(HomeAssistantError):
+        await _call(hass, "mark_exported", {"session_id": "s1"})
+    assert coordinator.store.get_session("s1").exported is False
+
+
 async def test_mark_exported_notifies_listeners(hass, coordinator):
-    add_session(coordinator, "s1")
+    add_session(coordinator, "s1", finalized=True)
     calls = []
     coordinator.add_tracker_listener("tracker-1", lambda: calls.append(1))
     await _call(hass, "mark_exported", {"session_id": "s1"})
