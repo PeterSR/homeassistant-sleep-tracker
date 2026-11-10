@@ -130,6 +130,7 @@ export interface TrackerConfig {
   export_headers: Record<string, string>;
   export_environment_data: boolean;
   retention_days: number;
+  keep_unexported: boolean;
   checklist: ChecklistItem[];
   show_note: boolean;
   show_rating_quality: boolean;

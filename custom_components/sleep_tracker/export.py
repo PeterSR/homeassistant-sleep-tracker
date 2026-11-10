@@ -5,11 +5,12 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .history_helper import async_get_state_history
@@ -23,16 +24,20 @@ _LOGGER = logging.getLogger(__name__)
 EXPORT_TIMEOUT_SECONDS = 30
 
 
-class ExportError(Exception):
+class ExportError(HomeAssistantError):
     """Raised when export fails."""
 
 
-async def async_export_session(
+async def async_build_export_payload(
     hass: HomeAssistant,
     coordinator: SleepTrackerCoordinator,
     session_id: str,
-) -> None:
-    """Export a completed session to the user's configured REST endpoint."""
+) -> dict[str, Any]:
+    """Build the export payload for a completed session.
+
+    Shared by the REST export and the get_session action so both always
+    produce the same data.
+    """
     session = coordinator.store.get_session(session_id)
     if session is None:
         raise ExportError(f"Session {session_id} not found")
@@ -40,10 +45,8 @@ async def async_export_session(
         raise ExportError("Cannot export an active session")
 
     config = coordinator.store.get_tracker_config(session.tracker_id)
-    if config is None or not config.export_url:
-        raise ExportError("No export URL configured for this tracker")
-    if not config.export_url.startswith(("http://", "https://")):
-        raise ExportError("export_url must be an http(s) URL")
+    if config is None:
+        raise ExportError("Tracker not found for this session")
 
     # Prefer stored (edited) phases; fall back to materializing from events
     if session.phases is not None:
@@ -58,7 +61,7 @@ async def async_export_session(
         )
     stats = compute_stats(phases, session.started_at, session.ended_at)
 
-    payload = {
+    payload: dict[str, Any] = {
         "session_id": session.session_id,
         "tracker_id": session.tracker_id,
         "started_at": session.started_at,
@@ -88,6 +91,29 @@ async def async_export_session(
                 "Failed to fetch environment history for session %s", session_id
             )
             payload["environment_history"] = {}
+
+    return payload
+
+
+async def async_export_session(
+    hass: HomeAssistant,
+    coordinator: SleepTrackerCoordinator,
+    session_id: str,
+) -> None:
+    """Export a completed session to the user's configured REST endpoint."""
+    session = coordinator.store.get_session(session_id)
+    if session is None:
+        raise ExportError(f"Session {session_id} not found")
+    if session.is_active:
+        raise ExportError("Cannot export an active session")
+
+    config = coordinator.store.get_tracker_config(session.tracker_id)
+    if config is None or not config.export_url:
+        raise ExportError("No export URL configured for this tracker")
+    if not config.export_url.startswith(("http://", "https://")):
+        raise ExportError("export_url must be an http(s) URL")
+
+    payload = await async_build_export_payload(hass, coordinator, session_id)
 
     client = async_get_clientsession(hass)
     headers = {"Content-Type": "application/json"}

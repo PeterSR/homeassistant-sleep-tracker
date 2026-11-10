@@ -287,6 +287,7 @@ export class SleepTrackerApi {
         | "export_headers"
         | "export_environment_data"
         | "retention_days"
+        | "keep_unexported"
         | "checklist"
         | "show_note"
         | "show_rating_quality"

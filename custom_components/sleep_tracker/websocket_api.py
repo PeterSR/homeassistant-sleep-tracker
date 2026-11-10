@@ -76,6 +76,7 @@ _UPDATE_SETTINGS_FIELDS: dict = {
     "export_headers": vol.Schema({_short_str: vol.All(str, vol.Length(max=_MAX_HEADER_LEN))}),
     "export_environment_data": bool,
     "retention_days": vol.All(int, vol.Range(min=7, max=365)),
+    "keep_unexported": bool,
     "checklist": vol.All([CHECKLIST_ITEM_SCHEMA], vol.Length(max=_MAX_LIST_ITEMS)),
     "show_note": bool,
     "show_rating_quality": bool,

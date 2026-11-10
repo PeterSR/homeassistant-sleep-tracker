@@ -9,5 +9,60 @@
     "abort": {
       "already_configured": "Sleep Tracker is already configured."
     }
+  },
+  "services": {
+    "list_sessions": {
+      "name": "List sessions",
+      "description": "List sessions with their export state, oldest first. Returns the result as response data. Admin only.",
+      "fields": {
+        "tracker_id": {
+          "name": "Tracker ID",
+          "description": "Only return sessions of this tracker."
+        },
+        "finalized": {
+          "name": "Finalized",
+          "description": "Only return sessions whose finalized flag matches."
+        },
+        "exported": {
+          "name": "Exported",
+          "description": "Only return sessions whose exported flag matches."
+        }
+      }
+    },
+    "get_session": {
+      "name": "Get session",
+      "description": "Return the export payload of a completed session, identical to what the REST export posts. Admin only.",
+      "fields": {
+        "session_id": {
+          "name": "Session ID",
+          "description": "The UUID of the session."
+        }
+      }
+    },
+    "mark_exported": {
+      "name": "Mark session exported",
+      "description": "Set or clear the exported flag of a session. Admin only.",
+      "fields": {
+        "session_id": {
+          "name": "Session ID",
+          "description": "The UUID of the session."
+        },
+        "exported": {
+          "name": "Exported",
+          "description": "The value to set."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "status": {
+        "state": {
+          "idle": "Idle",
+          "active": "Active",
+          "paused": "Paused"
+        }
+      }
+    }
   }
 }

@@ -179,12 +179,22 @@ class SleepTrackerStore:
         ]
 
     def purge_old_sessions(self, tracker_id: str, retention_days: int) -> int:
-        """Delete sessions older than retention period. Returns count deleted."""
+        """Delete sessions older than retention period. Returns count deleted.
+
+        Sessions that have not been exported are kept when the tracker has
+        keep_unexported set or an export_url configured.
+        """
+        config = self.trackers.get(tracker_id)
+        protect_unexported = bool(
+            config and (config.keep_unexported or config.export_url)
+        )
         cutoff_dt = dt_util.utcnow() - timedelta(days=retention_days)
 
         to_remove: list[str] = []
         for sid, s in self.sessions.items():
             if s.tracker_id != tracker_id or s.is_active:
+                continue
+            if protect_unexported and not s.exported:
                 continue
             try:
                 started = datetime.fromisoformat(s.started_at)

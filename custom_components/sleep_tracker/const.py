@@ -1,7 +1,7 @@
 """Constants for Sleep Tracker integration."""
 
 DOMAIN = "sleep_tracker"
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 STORAGE_KEY = "sleep_tracker"
 STORAGE_VERSION = 1
 
@@ -36,3 +36,7 @@ BUS_EVENT_EVENT = f"{DOMAIN}_event"
 
 DEFAULT_FALL_ASLEEP_LATENCY = 15  # minutes
 DEFAULT_RETENTION_DAYS = 90
+
+STATUS_IDLE = "idle"
+STATUS_ACTIVE = "active"
+STATUS_PAUSED = "paused"

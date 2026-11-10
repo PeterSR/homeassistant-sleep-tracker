@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import voluptuous as vol
 
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.service import async_register_admin_service
 
 from .automation_meta import resolve_automation_metadata
 from .const import (
@@ -24,6 +25,9 @@ SERVICE_EVENT_AWAKE = "event_awake"
 SERVICE_EVENT_STILL_AWAKE = "event_still_awake"
 SERVICE_EVENT_FELL_ASLEEP = "event_fell_asleep"
 SERVICE_EXPORT_SESSION = "export_session"
+SERVICE_LIST_SESSIONS = "list_sessions"
+SERVICE_GET_SESSION = "get_session"
+SERVICE_MARK_EXPORTED = "mark_exported"
 
 SCHEMA_TRACKER_AND_SOURCE = vol.Schema(
     {
@@ -37,6 +41,21 @@ SCHEMA_TRACKER_AND_SOURCE = vol.Schema(
 SCHEMA_SESSION_ID = vol.Schema(
     {
         vol.Required("session_id"): str,
+    }
+)
+
+SCHEMA_LIST_SESSIONS = vol.Schema(
+    {
+        vol.Optional("tracker_id"): str,
+        vol.Optional("finalized"): bool,
+        vol.Optional("exported"): bool,
+    }
+)
+
+SCHEMA_MARK_EXPORTED = vol.Schema(
+    {
+        vol.Required("session_id"): str,
+        vol.Optional("exported", default=True): bool,
     }
 )
 
@@ -145,6 +164,46 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         coordinator = _get_coordinator(hass)
         await async_export_session(hass, coordinator, call.data["session_id"])
 
+    async def handle_list_sessions(call: ServiceCall) -> dict:
+        coordinator = _get_coordinator(hass)
+        sessions = [
+            s
+            for s in coordinator.store.sessions.values()
+            if ("tracker_id" not in call.data or s.tracker_id == call.data["tracker_id"])
+            and ("finalized" not in call.data or s.finalized == call.data["finalized"])
+            and ("exported" not in call.data or s.exported == call.data["exported"])
+        ]
+        sessions.sort(key=lambda s: s.started_at)
+        return {
+            "sessions": [
+                {
+                    "session_id": s.session_id,
+                    "tracker_id": s.tracker_id,
+                    "started_at": s.started_at,
+                    "ended_at": s.ended_at,
+                    "finalized": s.finalized,
+                    "exported": s.exported,
+                }
+                for s in sessions
+            ]
+        }
+
+    async def handle_get_session(call: ServiceCall) -> dict:
+        from .export import async_build_export_payload
+
+        coordinator = _get_coordinator(hass)
+        payload = await async_build_export_payload(
+            hass, coordinator, call.data["session_id"]
+        )
+        return {"session": payload}
+
+    async def handle_mark_exported(call: ServiceCall) -> None:
+        coordinator = _get_coordinator(hass)
+        session_id = call.data["session_id"]
+        if coordinator.store.get_session(session_id) is None:
+            raise HomeAssistantError(f"Session {session_id} not found")
+        coordinator.store.update_session(session_id, exported=call.data["exported"])
+
     hass.services.async_register(
         DOMAIN, SERVICE_START_SLEEP, handle_start_sleep,
         schema=SCHEMA_TRACKER_AND_SOURCE,
@@ -177,6 +236,20 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         DOMAIN, SERVICE_EXPORT_SESSION, handle_export_session,
         schema=SCHEMA_SESSION_ID,
     )
+    async_register_admin_service(
+        hass, DOMAIN, SERVICE_LIST_SESSIONS, handle_list_sessions,
+        schema=SCHEMA_LIST_SESSIONS,
+        supports_response=SupportsResponse.ONLY,
+    )
+    async_register_admin_service(
+        hass, DOMAIN, SERVICE_GET_SESSION, handle_get_session,
+        schema=SCHEMA_SESSION_ID,
+        supports_response=SupportsResponse.ONLY,
+    )
+    async_register_admin_service(
+        hass, DOMAIN, SERVICE_MARK_EXPORTED, handle_mark_exported,
+        schema=SCHEMA_MARK_EXPORTED,
+    )
 
 
 async def async_unload_services(hass: HomeAssistant) -> None:
@@ -190,5 +263,8 @@ async def async_unload_services(hass: HomeAssistant) -> None:
         SERVICE_EVENT_STILL_AWAKE,
         SERVICE_EVENT_FELL_ASLEEP,
         SERVICE_EXPORT_SESSION,
+        SERVICE_LIST_SESSIONS,
+        SERVICE_GET_SESSION,
+        SERVICE_MARK_EXPORTED,
     ):
         hass.services.async_remove(DOMAIN, service)

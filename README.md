@@ -53,8 +53,11 @@ For each tracker (`{slug}` = slugified display name):
 | `sensor.sleep_tracker_{slug}_session_start` | sensor (timestamp) | current or last session's start time |
 | `sensor.sleep_tracker_{slug}_sleep_duration` | sensor (duration) | minutes asleep in the current session |
 | `sensor.sleep_tracker_{slug}_awake_count` | sensor | awakenings in the current session |
+| `sensor.sleep_tracker_{slug}_status` | sensor (enum) | `idle` / `active` / `paused` - lifecycle of the open session |
 
 Use `sensor.sleep_tracker_{slug}_phase == 'asleep'` as a condition when you need "actually asleep" rather than "is in bed".
+
+The `status` sensor tells a paused session apart from an active one, which the `in_session` binary sensor does not. It has the attributes `tracker_id`, `session_id` and `started_at` (both `null` while `idle`).
 
 ## Services
 
@@ -70,8 +73,19 @@ All services live under the `sleep_tracker` domain - open **Developer Tools → 
 | `event_still_awake` | Extend the awake window - no state change. |
 | `event_fell_asleep` | Force an immediate asleep transition, bypassing the latency model. |
 | `export_session` | POST a finalized session to the configured REST endpoint. |
+| `list_sessions` | Admin only, returns data. List sessions (`session_id`, `tracker_id`, `started_at`, `ended_at`, `finalized`, `exported`), oldest first. Optional filters: `tracker_id`, `finalized`, `exported`. |
+| `get_session` | Admin only, returns data. The export payload of a completed session, identical to what the REST export posts (including `environment_history` when enabled). |
+| `mark_exported` | Admin only. Set the `exported` flag of a session (`exported` defaults to true). |
 
 All tracker-facing services take `tracker_id`. For a personal tracker this is the HA user id (`{{ states.person.your_name.attributes.user_id }}`); for a shared tracker, copy the id from **Settings → Tracker ID** in the panel. Most services also accept optional `source`, `automation_id`, and `automation_trigger_id` for provenance - these show up in the session's event review so you can tell which automation fired what.
+
+### Pulling sessions with actions
+
+`list_sessions`, `get_session` and `mark_exported` let another integration or script pull finished sessions instead of relying on the REST push. A typical loop calls `list_sessions` with `finalized: true` and `exported: false`, fetches each result with `get_session`, delivers it, then calls `mark_exported`. The first two actions only return data (`return_response`), and all three require an admin user.
+
+### Keeping unexported sessions
+
+Retention normally deletes sessions older than the retention period when a new session starts. Turn on **Keep sessions until exported** in a tracker's settings (`keep_unexported`) and sessions with `exported` false are never deleted by retention. The same protection always applies to a tracker with an export URL. Sessions pulled with the actions above stay protected until you call `mark_exported`.
 
 ## Automation example
 
@@ -102,6 +116,13 @@ Architecture notes live in [CLAUDE.md](CLAUDE.md). The frontend is Lit + TypeScr
 make dev               # build frontend + deploy + restart HA
 make deploy-frontend   # frontend-only, hard-refresh the browser
 make logs              # tail HA logs filtered to sleep_tracker
+```
+
+Tests use [uv](https://docs.astral.sh/uv/) and pytest-homeassistant-custom-component:
+
+```bash
+uv sync --group test
+uv run pytest
 ```
 
 ## License

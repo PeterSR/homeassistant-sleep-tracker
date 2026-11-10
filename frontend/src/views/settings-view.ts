@@ -31,6 +31,7 @@ export class SettingsView extends LitElement {
   @state() private _exportUrl = "";
   @state() private _exportEnvironmentData = false;
   @state() private _retentionDays = 90;
+  @state() private _keepUnexported = false;
   @state() private _skipEventReview = false;
   @state() private _skipPhaseReview = false;
   @state() private _sleepGoalMinutes = 0;
@@ -94,6 +95,7 @@ export class SettingsView extends LitElement {
       this._exportUrl = config.export_url || "";
       this._exportEnvironmentData = config.export_environment_data;
       this._retentionDays = config.retention_days;
+      this._keepUnexported = config.keep_unexported ?? false;
       this._checklist = [...(config.checklist || [])];
       this._showNote = config.show_note;
       this._showRatingQuality = config.show_rating_quality;
@@ -139,6 +141,7 @@ export class SettingsView extends LitElement {
         export_url: this._exportUrl || null,
         export_environment_data: this._exportEnvironmentData,
         retention_days: this._retentionDays,
+        keep_unexported: this._keepUnexported,
         checklist: this._checklist,
         sleep_goal_minutes: this._sleepGoalMinutes,
       });
@@ -1095,6 +1098,23 @@ data:
                 .value=${String(this._retentionDays)}
                 @input=${this._onRetentionChange}
               />
+            </div>
+
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <span class="toggle-label">Keep sessions until exported</span>
+                <span class="range-value">
+                  Retention never deletes a session that has not been exported.
+                  This always applies when an export URL is set.
+                </span>
+              </div>
+              <ha-switch
+                .checked=${this._keepUnexported}
+                @change=${(e: Event) => {
+                  this._keepUnexported = (e.target as HTMLInputElement).checked;
+                  this._dirty = true;
+                }}
+              ></ha-switch>
             </div>
 
             <div class="field">
