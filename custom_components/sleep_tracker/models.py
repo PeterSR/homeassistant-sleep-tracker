@@ -290,6 +290,7 @@ class SleepSession:
     phases: list[SleepPhase] | None = None  # materialized on complete
     finalized: bool = False
     exported: bool = False
+    revision: int = 0  # incremented every time the session is finalized
     note: str | None = None
     rating_quality: int | None = None  # 1-5
     rating_feeling: int | None = None  # 1-5
@@ -323,6 +324,7 @@ class SleepSession:
             ),
             "finalized": self.finalized,
             "exported": self.exported,
+            "revision": self.revision,
             "note": self.note,
             "rating_quality": self.rating_quality,
             "rating_feeling": self.rating_feeling,
@@ -348,6 +350,7 @@ class SleepSession:
             ),
             finalized=data.get("finalized", False),
             exported=data.get("exported", False),
+            revision=data.get("revision", 0),
             note=data.get("note"),
             rating_quality=data.get("rating_quality"),
             rating_feeling=data.get("rating_feeling"),

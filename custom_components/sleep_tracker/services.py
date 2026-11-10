@@ -58,6 +58,7 @@ SCHEMA_MARK_EXPORTED = vol.Schema(
     {
         vol.Required("session_id"): str,
         vol.Optional("exported", default=True): cv.boolean,
+        vol.Optional("revision"): vol.All(int, vol.Range(min=0)),
     }
 )
 
@@ -193,6 +194,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                     "ended_at": s.ended_at,
                     "finalized": s.finalized,
                     "exported": s.exported,
+                    "revision": s.revision,
                 }
                 for s in sessions
             ]
@@ -205,12 +207,13 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         payload = await async_build_export_payload(
             hass, coordinator, call.data["session_id"]
         )
-        return {"session": payload}
+        session = coordinator.store.get_session(call.data["session_id"])
+        return {"session": payload, "revision": session.revision}
 
     async def handle_mark_exported(call: ServiceCall) -> None:
         coordinator = _get_coordinator(hass)
         coordinator.async_set_exported(
-            call.data["session_id"], call.data["exported"]
+            call.data["session_id"], call.data["exported"], call.data.get("revision")
         )
 
     hass.services.async_register(

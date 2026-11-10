@@ -1032,7 +1032,9 @@ class SleepTrackerCoordinator:
         if session.finalized:
             raise HomeAssistantError("Session is already finalized")
 
-        self.store.update_session(session_id, finalized=True)
+        self.store.update_session(
+            session_id, finalized=True, revision=session.revision + 1
+        )
         self._edit_history.pop(session_id, None)
 
         config = self.store.get_tracker_config(tracker_id)
@@ -1052,11 +1054,15 @@ class SleepTrackerCoordinator:
         return self._session_to_dict(session)
 
     @callback
-    def async_set_exported(self, session_id: str, exported: bool) -> None:
+    def async_set_exported(
+        self, session_id: str, exported: bool, revision: int | None = None
+    ) -> None:
         """Set the exported flag of a session and notify listeners.
 
         Only a finalized session can be marked exported; clearing the flag is
-        always allowed. Active sessions are rejected.
+        always allowed. Active sessions are rejected. When `revision` is given
+        and exported is true, it must equal the session's current revision, so
+        a delivery of an older finalization cannot mark a re-finalized session.
         """
         session = self.store.get_session(session_id)
         if session is None:
@@ -1065,6 +1071,10 @@ class SleepTrackerCoordinator:
             raise HomeAssistantError("Session is still active")
         if exported and not session.finalized:
             raise HomeAssistantError("Session is not finalized")
+        if exported and revision is not None and revision != session.revision:
+            raise HomeAssistantError(
+                f"Session revision is {session.revision}, not {revision}"
+            )
         self.store.update_session(session_id, exported=exported)
         self._notify_listeners(session.tracker_id)
 

@@ -11,7 +11,9 @@ from custom_components.sleep_tracker.export import async_export_session
 
 from .helpers import add_session
 
-LIST_KEYS = {"session_id", "tracker_id", "started_at", "ended_at", "finalized", "exported"}
+LIST_KEYS = {
+    "session_id", "tracker_id", "started_at", "ended_at", "finalized", "exported", "revision",
+}
 
 
 async def _call(hass, service, data, *, response=False, context=None):
@@ -62,6 +64,8 @@ async def test_get_session_matches_rest_export(hass, coordinator, aioclient_mock
     session = await coordinator.async_start_sleep("tracker-1", "test")
     await coordinator.async_stop_sleep("tracker-1", "test")
     await coordinator.async_complete_session("tracker-1", session["session_id"])
+    # Finalize directly so no auto-export runs before the REST call under test.
+    coordinator.store.update_session(session["session_id"], finalized=True)
     aioclient_mock.post("https://example.org/sleep", status=200)
 
     result = await _call(hass, "get_session", {"session_id": session["session_id"]}, response=True)
@@ -71,7 +75,7 @@ async def test_get_session_matches_rest_export(hass, coordinator, aioclient_mock
 
     assert len(aioclient_mock.mock_calls) == 1
     posted = aioclient_mock.mock_calls[0][2]
-    assert result == {"session": posted}
+    assert result == {"session": posted, "revision": 0}
     assert posted["session_id"] == session["session_id"]
     assert posted["tracker_id"] == "tracker-1"
     assert "environment_history" not in posted
@@ -200,3 +204,45 @@ async def test_list_sessions_sorts_by_parsed_datetime(hass, coordinator):
         )
     result = await _call(hass, "list_sessions", {}, response=True)
     assert [s["session_id"] for s in result["sessions"]] == ["earlier", "later"]
+
+
+async def test_revision_race_refuses_stale_mark(hass, coordinator):
+    add_session(coordinator, "s1", finalized=False)
+    await coordinator.async_finalize_session("tracker-1", "s1")
+
+    first = await _call(hass, "get_session", {"session_id": "s1"}, response=True)
+    revision = first["revision"]
+    assert revision == 1
+
+    await coordinator.async_unfinalize_session("tracker-1", "s1")
+    await coordinator.async_update_session_meta("tracker-1", "s1", note="edited")
+    await coordinator.async_finalize_session("tracker-1", "s1")
+
+    with pytest.raises(HomeAssistantError):
+        await _call(hass, "mark_exported", {"session_id": "s1", "revision": revision})
+    listed = await _call(hass, "list_sessions", {"exported": False}, response=True)
+    assert [(s["session_id"], s["revision"]) for s in listed["sessions"]] == [("s1", 2)]
+
+    again = await _call(hass, "get_session", {"session_id": "s1"}, response=True)
+    assert again["revision"] == 2
+    assert again["session"]["note"] == "edited"
+    await _call(hass, "mark_exported", {"session_id": "s1", "revision": 2})
+    assert coordinator.store.get_session("s1").exported is True
+
+
+async def test_rest_export_requires_finalized_and_notifies(hass, coordinator, aioclient_mock):
+    await coordinator.async_update_tracker_config(
+        "tracker-1", export_url="https://example.org/sleep"
+    )
+    aioclient_mock.post("https://example.org/sleep", status=200)
+    add_session(coordinator, "open", finalized=False)
+    with pytest.raises(HomeAssistantError):
+        await async_export_session(hass, coordinator, "open")
+    assert aioclient_mock.call_count == 0
+
+    add_session(coordinator, "done", finalized=True)
+    calls = []
+    coordinator.add_tracker_listener("tracker-1", lambda: calls.append(1))
+    await async_export_session(hass, coordinator, "done")
+    assert coordinator.store.get_session("done").exported is True
+    assert calls

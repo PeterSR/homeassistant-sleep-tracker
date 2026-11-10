@@ -107,6 +107,10 @@ async def async_export_session(
     if session.is_active:
         raise ExportError("Cannot export an active session")
 
+    if not session.finalized:
+        raise ExportError("Session is not finalized")
+    revision = session.revision
+
     config = coordinator.store.get_tracker_config(session.tracker_id)
     if config is None or not config.export_url:
         raise ExportError("No export URL configured for this tracker")
@@ -147,5 +151,13 @@ async def async_export_session(
     except aiohttp.ClientError as err:
         raise ExportError(f"Export request failed: {err}") from err
 
-    coordinator.store.update_session(session_id, exported=True)
+    try:
+        coordinator.async_set_exported(session_id, True, revision)
+    except HomeAssistantError:
+        # Unfinalized or re-finalized while the request was in flight: the
+        # delivered data may be stale, so leave the session unexported.
+        _LOGGER.warning(
+            "Session %s changed during export, not marking it exported", session_id
+        )
+        return
     _LOGGER.info("Session %s exported successfully", session_id)

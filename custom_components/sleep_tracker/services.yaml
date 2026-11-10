@@ -196,7 +196,7 @@ export_session:
 
 list_sessions:
   name: List sessions
-  description: List sessions with their export state, oldest first. Returns the result as response data. Admin only.
+  description: List sessions with their export state and revision, oldest first. Returns the result as response data. Admin only.
   fields:
     tracker_id:
       name: Tracker ID
@@ -219,7 +219,7 @@ list_sessions:
 
 get_session:
   name: Get session
-  description: Return the export payload of a completed session, identical to what the REST export posts. Admin only.
+  description: Return the export payload of a completed session, identical to what the REST export posts, plus the session revision. Admin only.
   fields:
     session_id:
       name: Session ID
@@ -230,7 +230,7 @@ get_session:
 
 mark_exported:
   name: Mark session exported
-  description: Set or clear the exported flag of a session. Admin only.
+  description: Set or clear the exported flag of a session. Marking exported requires a finalized session; clearing is always allowed. Admin only.
   fields:
     session_id:
       name: Session ID
@@ -245,3 +245,11 @@ mark_exported:
       default: true
       selector:
         boolean:
+    revision:
+      name: Revision
+      description: Optional. The revision returned by get_session. When marking exported, refused unless it equals the session's current revision.
+      required: false
+      selector:
+        number:
+          min: 0
+          mode: box

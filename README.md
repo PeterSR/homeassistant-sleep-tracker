@@ -73,15 +73,17 @@ All services live under the `sleep_tracker` domain - open **Developer Tools → 
 | `event_still_awake` | Extend the awake window - no state change. |
 | `event_fell_asleep` | Force an immediate asleep transition, bypassing the latency model. |
 | `export_session` | POST a finalized session to the configured REST endpoint. |
-| `list_sessions` | Admin only, returns data. List sessions (`session_id`, `tracker_id`, `started_at`, `ended_at`, `finalized`, `exported`), oldest first. Optional filters: `tracker_id`, `finalized`, `exported`. |
-| `get_session` | Admin only, returns data. The export payload of a completed session, identical to what the REST export posts (including `environment_history` when enabled). |
-| `mark_exported` | Admin only. Set the `exported` flag of a session (`exported` defaults to true). |
+| `list_sessions` | Admin only, returns data. List sessions (`session_id`, `tracker_id`, `started_at`, `ended_at`, `finalized`, `exported`, `revision`), oldest first. Optional filters: `tracker_id`, `finalized`, `exported`. |
+| `get_session` | Admin only, returns data. The export payload of a completed session, identical to what the REST export posts (including `environment_history` when enabled), as `{"session": payload, "revision": n}`. |
+| `mark_exported` | Admin only. Set the `exported` flag of a session (`exported` defaults to true). Marking exported requires a finalized session; clearing is always allowed. Optional `revision`: when marking exported, refused unless it equals the session's current revision. |
 
 All tracker-facing services take `tracker_id`. For a personal tracker this is the HA user id (`{{ states.person.your_name.attributes.user_id }}`); for a shared tracker, copy the id from **Settings → Tracker ID** in the panel. Most services also accept optional `source`, `automation_id`, and `automation_trigger_id` for provenance - these show up in the session's event review so you can tell which automation fired what.
 
 ### Pulling sessions with actions
 
 `list_sessions`, `get_session` and `mark_exported` let another integration or script pull finished sessions instead of relying on the REST push. A typical loop calls `list_sessions` with `finalized: true` and `exported: false`, fetches each result with `get_session`, delivers it, then calls `mark_exported`. The first two actions only return data (`return_response`), and all three require an admin user.
+
+Every finalization increments the session's `revision`. Pass the `revision` from `get_session` to `mark_exported`: if the session was unfinalized, edited and finalized again while you were delivering, the revisions differ, the call is refused, and the session stays unexported so the next `list_sessions` returns it again.
 
 ### Keeping unexported sessions
 
